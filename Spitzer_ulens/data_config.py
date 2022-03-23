@@ -12,8 +12,9 @@ from astropy.coordinates import Angle
 def make_path(dst_dir):
     """
     Creates path of specified directory if it does not already exist
-    Args:
-        dst_dir (str): path to desired directory
+
+    :param dst_dir: Path to create.
+    :type kind: str
     """
     pathlist = os.path.normpath(dst_dir).split(os.path.sep)
     path = ''
