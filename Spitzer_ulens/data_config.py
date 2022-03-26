@@ -14,7 +14,7 @@ def make_path(dst_dir):
     Creates path of specified directory if it does not already exist
 
     :param dst_dir: Path to create.
-    :type kind: str
+    :type dst_dir: str
     """
     pathlist = os.path.normpath(dst_dir).split(os.path.sep)
     path = ''
@@ -31,9 +31,11 @@ def make_path(dst_dir):
 def move_fits_files_rec(src_dir,dst_dir):
     """
     Recursively searches directory structure for FITS files and puts them in a single data folder
-    Args:
-        src_dir (str): Path to folder to search
-        dst_dir (str): Path to folder to move files to
+    
+    :param src_dir: Path to folder in which to search for FITS files.
+    :type src_dir: str
+    :param dst_dir: Path to folder where you wish to store the FITS files.
+    :type dst_dir: str
     """
     data = []
     for f in os.listdir(src_dir):
@@ -46,8 +48,21 @@ def move_fits_files_rec(src_dir,dst_dir):
             move_fits_files_rec(src,dst_dir)
     return
 
-def directory_config(evt,telescope,src_dir):
-    dst_dir = 'data/'+evt+'/'+telescope+'/images'
+def directory_config(evt,telescope,src_dir,wd=""):
+    """
+    Create directory structure for use with PLD-ulens. Working directory must contain your python project that uses PLD-ulens, otherwise you must specify the project's working directory with the 'wd' input.
+    
+    :param evt: Name of the event, e.g. 'ob171140' for OGLE-2017-BLG-1140.
+    :type evt: str
+    :param telescope: Name of the telescope, e.g. 'spitzer'.
+    :type telescope: str
+    :param src_dir: Path to folder in which to search for FITS files.
+    :type src_dir: str
+    
+    :type wd: str, optional
+    """
+
+    dst_dir = wd+'data/'+evt+'/'+telescope+'/images'
 
     make_path(dst_dir)
     move_fits_files_rec(src_dir,dst_dir)

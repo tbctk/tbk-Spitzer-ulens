@@ -36,10 +36,14 @@ class MuLensEvent(object):
         if min is None and max is None:
             PTOT = np.sum(self.IMG,axis=(2,3))
             PTOT_E = np.sqrt(np.sum(np.asarray(self.IMG_E)**2,axis=(2,3)))
+            PTOT_BIN = np.median(PTOT,axis=0)
+            E_BIN = np.std(PTOT - PTOT_BIN)
         else:        
             PTOT = np.sum(self.IMG[:,:,min:max,min:max],axis=(2,3))
             PTOT_E = np.sqrt(np.sum(np.asarray(self.IMG_E[:,:,min:max,min:max])**2,axis=(2,3)))
-        return PTOT,PTOT_E
+            PTOT_BIN = np.median(PTOT,axis=0)
+            E_BIN = np.std(PTOT - PTOT_BIN)
+        return PTOT,PTOT_E,E_BIN
 
     def get_PNORM(self, min=None, max=None):
         """Returns P-Hat, i.e. the fraction of total flux recorded by each pixels.
@@ -51,7 +55,7 @@ class MuLensEvent(object):
         Returns:
             list: list of PNORMS stacks for each dither positions.
         """
-        PTOT,_ = self.aperture_photometry(min,max)
+        PTOT,_,_ = self.aperture_photometry(min,max)
         if min is None and max is None:
             PNORM = np.asarray(self.IMG)/PTOT[:,:,None,None]
         else:
@@ -74,9 +78,9 @@ class MuLensEvent(object):
             returnv.append(lst_flat[ind])
         return tuple(returnv)
     
-    def lmfit(self,func,p0,PTOT,makeplots=False):
+    def modelfit(self,func,p0,PTOT,makeplots=False,**kwargs):
         time,ptot = self.chrono_flatten(PTOT)
-        popt, pcov = opt.curve_fit(f=func,xdata=time,ydata=ptot,p0=p0) 
+        popt, pcov = opt.curve_fit(f=func,xdata=time,ydata=ptot,p0=p0,**kwargs) 
         perr = np.sqrt(np.diag(pcov)) # assuming uncorrelated
         bestfit = func(time,*popt)
         resi = ptot-bestfit
