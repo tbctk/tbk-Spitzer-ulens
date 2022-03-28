@@ -78,7 +78,10 @@ def analytic_solution(TIMES,PTOT,PTOT_E,PNORM,popt,func):
     return Y, Astro, Ps, A, C, E, X
 
 def get_bestfit(A, Ps, X, PTOT, Astro):
-    """Getting the best-fit value from analytical solutions.
+    """
+    Getting the best-fit value from analytical solutions.
+        
+    :param A: Independent variable matrix, defined by A[i,j] = Astro[i]*Ps[i,j]
     """
     FIT = []    
     SYS = []
