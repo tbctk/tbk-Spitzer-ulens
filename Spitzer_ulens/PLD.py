@@ -5,6 +5,7 @@ import emcee
 import time as ti
 from tqdm import tqdm
 import os
+from . import mcmc
 
 def invert_matrix(mat):
     """Inverting matrix. If the matrix is not invertible (because it has a determinant of 0), try np.linalg.pinv which computes the (Moore-Penrose) pseudo-inverse of a matrix. Calculate the generalized inverse of a matrix using its singular-value decomposition (SVD) and including all large singular values.
@@ -114,3 +115,9 @@ def get_RMS(residual,label='RMS',visual=False):
     if visual:
         print(label, ' : ', RMS)
     return RMS
+
+def get_BIC(func,popt,TIMES,PTOT,PTOT_E,E_BIN,PNORM):
+    ndit,_,sx,sy = PNORM.shape
+    dudchain = mcmc.PLDCoeffsChain(np.empty(ndit*sx*sy))
+    lnlike = mcmc.lnlike(popt_mcmc, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, dudchain)
+    return popt_mcmc.size*np.log(ptot.size)-lnlike
