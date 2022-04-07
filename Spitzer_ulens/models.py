@@ -65,6 +65,14 @@ def iterate_from(item):
         yield item
         item = item.next
 
+        
+def binary_lens(t, s, q, rho, alpha, tE, t0, u0):
+    VBBL = VBBinaryLensing.VBBinaryLensing()
+    VBBL.RelTol = 1e-03
+
+    # Position of the center of the source with respect to the center of mass.
+    tau, y1, y2 = position_LP(t, alpha, tE, t0, u0)
+
 def BL_caustic_curves(VBBL, s, q):
     """Generate caustic and critical curves.
     Args:

@@ -70,6 +70,25 @@ def lnprob(p0, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, PLD_chain, bounds):
     # calculate posterior
     return lp + lnlike(p0, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, PLD_chain)
 
+def run_mcmc(sampler,pos0,nsteps,visual=True,label=''):
+    """
+    Runs nsteps samples of MCMC using the given sampler and starting positions.
+    """
+    if visual:
+        tic = ti.time()
+        print('Running MCMC '+label+'...')
+        
+        for pos, prob, state in tqdm(sampler.sample(pos0, iterations=nsteps),total=nsteps):
+            pass
+
+        print("Mean burn-in acceptance fraction: {0:.3f}".format(np.mean(sampler.acceptance_fraction)))
+        toc = ti.time()
+        print('MCMC runtime = %.2f min\n' % ((toc-tic)/60.))
+        return pos,prob,state
+    else:
+        pos,prob,state = sampler.run_mcmc(pos0,nsteps)
+        return pos,prob,state
+
 def run_MCMC(sampler,pos0,visual=True,nburnin=300,nprod=1000):
     #First burn-in:
     tic = ti.time()
@@ -112,16 +131,17 @@ def run_MCMC(sampler,pos0,visual=True,nburnin=300,nprod=1000):
     print('MCMC runtime = %.2f min\n' % ((toc-tic)/60.))
     return sampler.chain,pos3,sampler.lnprobability
 
-def save_chain(evt,chain,posit,lnprob,PLD_coeffs=None):
+def save_results(evt,chain,posit,lnprob,PLD_coeffs=None,folder=''):
     #Saving MCMC Results
-    savepath  = 'data/'+ evt + '/mega_MCMC/'
+    savepath = 'data/'+ evt + '/mega_MCMC/'
+    savepath = os.path.join(savepath,folder)
     if not os.path.exists(savepath):
         os.makedirs(savepath)
 
     # path + name for saving important MCMC info
-    pathchain = savepath + 'samplerchain.npy'
-    pathposit = savepath + 'samplerposit.npy'
-    pathlnpro = savepath + 'samplerlnpro.npy'
+    pathchain = os.path.join(savepath,'samplerchain.npy')
+    pathposit = os.path.join(savepath,'samplerposit.npy')
+    pathlnpro = os.path.join(savepath,'samplerlnpro.npy')
 
     # chain of all walkers during the last production steps (nwalkers, nsteps, ndim)
     np.save(pathchain, chain)
@@ -131,6 +151,29 @@ def save_chain(evt,chain,posit,lnprob,PLD_coeffs=None):
     np.save(pathlnpro, lnprob)
     # save PLD coefficients too 
     if not PLD_coeffs is None:
-        pathPLDco = savepath + 'PLD_chain.npy'
+        pathPLDco = os.path.join(savepath,'PLD_chain.npy')
         np.save(pathPLDco, PLD_coeffs)
     return
+
+def get_MCMC_results(chain,lnprob):
+    _,_,npars = chain.shape
+    posit = chain.reshape(-1,npars)
+
+    # Get the percentile
+    percs = np.percentile(posit, [16, 50, 84],axis=0)
+    (MCMC_Results) = np.array(list(map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]), zip(*percs))))
+
+    popt = MCMC_Results[:,0]
+    std_hi = MCMC_Results[:,1]
+    std_lo = MCMC_Results[:,2]
+
+    # Get most probable params
+    probs = lnprob.flatten()
+    pmax = posit[np.argmax(probs)]
+    
+    return popt,pmax,std_hi,std_lo
+
+def get_BIC(popt_mcmc, MODELFUNC, TIMES, PTOT, PTOT_E, E_BIN, PNORM, X):
+    dudchain = PLDCoeffsChain(np.zeros(np.size(X)))
+    ll = lnlike(popt_mcmc, MODELFUNC, TIMES, PTOT, PTOT_E, E_BIN, PNORM, dudchain)
+    return popt_mcmc.size*np.log(ptot.size)-ll
