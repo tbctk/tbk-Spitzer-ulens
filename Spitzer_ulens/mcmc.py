@@ -176,4 +176,4 @@ def get_MCMC_results(chain,lnprob):
 def get_BIC(popt_mcmc, MODELFUNC, TIMES, PTOT, PTOT_E, E_BIN, PNORM, X):
     dudchain = PLDCoeffsChain(np.zeros(np.size(X)))
     ll = lnlike(popt_mcmc, MODELFUNC, TIMES, PTOT, PTOT_E, E_BIN, PNORM, dudchain)
-    return popt_mcmc.size*np.log(ptot.size)-ll
+    return popt_mcmc.size*np.log(PTOT.size)-ll
