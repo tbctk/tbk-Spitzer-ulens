@@ -18,7 +18,7 @@ def single_lens(time, fb, t0, fs, tE):
     flux = fb+fs/(np.sqrt(ts**2 +1))
     return flux
 
-def single_lens_5(t, tE, t0, u0, fb, fs):
+def single_lens_5(t, tE, t0, fb, fs, u0):
     """5-parameters single lens model approximation (see Gaudi (2011) Review on Exoplanetary Microlensing)
     Args:
         time (1D array): Time array (in days)

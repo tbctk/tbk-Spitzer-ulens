@@ -25,6 +25,14 @@ def invert_matrix(mat):
                 inv  = np.linalg.pinv(mat)
     return inv
 
+def analytic_solution2(TIMES,PTOT,PTOT_E,PNORM,popt,func):
+    n_dit,img_per_dit,size,_ = PNORM.shape()
+    
+    y = PTOT.ravel()
+    astro = func(TIMES,*popt).ravel()
+    ps = PNORM.reshape(
+    
+
 def analytic_solution(TIMES,PTOT,PTOT_E,PNORM,popt,func):
     """As our model is a linear function, we can solve for the best-fit parameters analytically.
     Args:
