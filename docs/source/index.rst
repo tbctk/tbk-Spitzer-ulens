@@ -8,7 +8,7 @@ Welcome to Spitzer-ulens's documentation!
 
 This is a work-in-progress documentation for Lisa Dang's pixel-level decorrelation method for Spitzer microlensing data.
 
-Check out the :doc:`usage` section for further information.
+Check out the :doc:`Spitzer_ulens` section for further information.
 
 
 
@@ -23,6 +23,7 @@ Contents
 --------
 
 .. toctree::
-
-   usage
-   api
+    :maxdepth: 2
+    :caption: Table of Contents
+    
+    Spitzer_ulens

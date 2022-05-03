@@ -1,0 +1,9 @@
+numpy
+scipy
+astropy
+pickle
+emcee
+tqdm
+VBBinaryLensing
+MulensModel
+matplotlib
