@@ -11,11 +11,6 @@ This is a work-in-progress documentation for Lisa Dang's pixel-level decorrelati
 Check out the :doc:`usage` section for further information.
 
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-
 
 Indices and tables
 ==================
@@ -30,3 +25,4 @@ Contents
 .. toctree::
 
    usage
+   api

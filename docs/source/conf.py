@@ -12,7 +12,8 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join('..','..','Spitzer_ulens')))
+
+sys.path.insert(0, os.path.abspath('../../Spitzer_ulens'))
 
 
 # -- Project information -----------------------------------------------------
@@ -32,6 +33,7 @@ release = '0.1'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
