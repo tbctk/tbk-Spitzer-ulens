@@ -6,31 +6,6 @@ import time as ti
 from tqdm import tqdm
 import os
 from . import mcmc
-
-def invert_matrix(mat):
-    """Inverting matrix. If the matrix is not invertible (because it has a determinant of 0), try np.linalg.pinv which computes the (Moore-Penrose) pseudo-inverse of a matrix. Calculate the generalized inverse of a matrix using its singular-value decomposition (SVD) and including all large singular values.
-    Args:
-        mat (2D array): matrix to be inverted
-    Returns:
-        2D array: Inverse of mat, or pseudomatrix if mat is singular.
-    """
-    inv = np.linalg.inv(mat)
-    if False:
-        try:
-            inv  = np.linalg.inv(mat)
-        except np.linalg.LinAlgError as err:
-            if 'Singular matrix' in str(err):
-                print('Error:', err)
-                print('Fix: Calculating pseudo-inverse of a matrix instead')
-                inv  = np.linalg.pinv(mat)
-    return inv
-
-def analytic_solution2(TIMES,PTOT,PTOT_E,PNORM,popt,func):
-    n_dit,img_per_dit,size,_ = PNORM.shape()
-    
-    y = PTOT.ravel()
-    astro = func(TIMES,*popt).ravel()
-    ps = PNORM.reshape(
     
 
 def analytic_solution(TIMES,PTOT,PTOT_E,PNORM,popt,func):
@@ -69,9 +44,9 @@ def analytic_solution(TIMES,PTOT,PTOT_E,PNORM,popt,func):
         Ps_i = np.reshape(PNORM[i],(n_data,n_reg))
         A_i = Ps_i*Astro_i
         C_i = np.diag(PTOT_E[i]**2)
-        Cinv = invert_matrix(C_i)
+        Cinv = np.linalg.pinv(C_i)
 
-        tmp1 = invert_matrix(A_i.T@Cinv@A_i)
+        tmp1 = np.linalg.pinv(A_i.T@Cinv@A_i)
         tmp2 = A_i.T@Cinv@Y_i
         X_i = tmp1@tmp2
 
