@@ -12,9 +12,8 @@ from astropy.coordinates import Angle
 def make_path(dst_dir):
     """
     Creates path of specified directory if it does not already exist
-
-    :param dst_dir: Path to create.
-    :type dst_dir: str
+    Args:
+        dst_dir (str): Path to create.
     """
     pathlist = os.path.normpath(dst_dir).split(os.path.sep)
     path = ''
@@ -31,11 +30,9 @@ def make_path(dst_dir):
 def move_fits_files_rec(src_dir,dst_dir):
     """
     Recursively searches directory structure for FITS files and puts them in a single data folder
-    
-    :param src_dir: Path to folder in which to search for FITS files.
-    :type src_dir: str
-    :param dst_dir: Path to folder where you wish to store the FITS files.
-    :type dst_dir: str
+    Args:
+        src_dir (str): Path to folder in which to search for FITS files.
+        dst_dir (str): Path to folder where you wish to store the FITS files.
     """
     data = []
     for f in os.listdir(src_dir):
@@ -48,27 +45,23 @@ def move_fits_files_rec(src_dir,dst_dir):
             move_fits_files_rec(src,dst_dir)
     return
 
-def directory_config(evt,telescope,src_dir,wd=""):
+def directory_config(evt,telescope,src_dir,rd=""):
     """
     Create directory structure for use with PLD-ulens. Working directory must contain your python project that uses PLD-ulens, otherwise you must specify the project's working directory with the 'wd' input.
-    
-    :param evt: Name of the event, e.g. 'ob171140' for OGLE-2017-BLG-1140.
-    :type evt: str
-    :param telescope: Name of the telescope, e.g. 'spitzer'.
-    :type telescope: str
-    :param src_dir: Path to folder in which to search for FITS files.
-    :type src_dir: str
-    
-    :type wd: str, optional
+    Args:
+        evt (str): Name of the event, e.g. 'ob171140' for OGLE-2017-BLG-1140.
+        telescope (str): Name of the telescope, e.g. 'spitzer'.
+        src_dir (str): Path to folder in which to search for FITS files.
+        rd (:obj:`str`, optional): Destination root project directory. Defaults to current working directory
     """
 
-    dst_dir = wd+'data/'+evt+'/'+telescope+'/images'
+    dst_dir = rd+'/data/'+evt+'/'+telescope+'/images'
 
     make_path(dst_dir)
     move_fits_files_rec(src_dir,dst_dir)
 
     # Make input folder for PLD_Decorrelation
-    dst_dir2 = 'data/'+evt+'/PLD_input'
+    dst_dir2 = rd+'/data/'+evt+'/PLD_input'
     make_path(dst_dir2)
     return
 
