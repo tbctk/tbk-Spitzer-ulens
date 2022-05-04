@@ -6,3 +6,4 @@ tqdm
 VBBinaryLensing
 MulensModel
 matplotlib
+sphinx==4.4.0

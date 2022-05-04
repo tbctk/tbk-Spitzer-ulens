@@ -46,6 +46,8 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
+root_doc = 'index'
+
 #autodoc_mock_imports = ["numpy","os","pickle","astropy","emcee","time","tqdm","VBBinaryLensing","MulensModel","scipy","matplotlib"]
 
 
