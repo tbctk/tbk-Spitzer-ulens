@@ -48,6 +48,8 @@ exclude_patterns = []
 
 root_doc = 'index'
 
+napoleon_custom_sections = [('Returns', 'params_style')]
+
 #autodoc_mock_imports = ["numpy","os","pickle","astropy","emcee","time","tqdm","VBBinaryLensing","MulensModel","scipy","matplotlib"]
 
 

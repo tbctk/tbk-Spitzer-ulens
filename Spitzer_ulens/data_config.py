@@ -72,10 +72,10 @@ def get_centroid_data_from_file(filepath,event_coords,origin=1):
         filepath (str): FITS file path
         event_coords (tuple of strings): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
     Returns:
-        label (string): unique label of this image
-        time (float): time of image taken in Reduced Helioc. Mod. Julian Date (may need to change this)
-        xp (float): pixel x-coordinate of event
-        yp (float): pixel y-coordinate of event
+        str: unique label of this image
+        float: time of image taken in Reduced Helioc. Mod. Julian Date (may need to change this)
+        float: pixel x-coordinate of event
+        float: pixel y-coordinate of event
     """
     hdu_list = fits.open(filepath)
     myheader = hdu_list[0].header
@@ -106,7 +106,7 @@ def read_centroid_data(dirpath,event_coords,origin=1,timerange=None):
         event_coords (tuple): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
         timerange (float): time range to use
     Returns:
-        data (numpy array): 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
+        numpy array: 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
     """
     data = []
     for filename in os.listdir(dirpath):
@@ -124,7 +124,7 @@ def generate_centroid_file(dirpath,event_coords,destpath='',origin=1,**kwargs):
         dirpath (string): path to data root directory
         event_coords (tuple of strings): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
     Returns:
-        data (numpy array): 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
+        numpy array: 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
     """
     data = read_centroid_data(dirpath,event_coords,origin=origin,**kwargs)
     ind = np.argsort(data[:,1]) # Sort data chronologically
