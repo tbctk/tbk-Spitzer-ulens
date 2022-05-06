@@ -5,3 +5,4 @@ tbk-Spitzer-ulens
    :maxdepth: 4
 
    Spitzer_ulens
+   setup
