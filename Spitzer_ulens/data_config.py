@@ -12,6 +12,7 @@ from astropy.coordinates import Angle
 def make_path(dst_dir):
     """
     Creates path of specified directory if it does not already exist
+    
     Args:
         dst_dir (str): Path to create.
     """
@@ -30,6 +31,7 @@ def make_path(dst_dir):
 def move_fits_files_rec(src_dir,dst_dir):
     """
     Recursively searches directory structure for FITS files and puts them in a single data folder
+    
     Args:
         src_dir (str): Path to folder in which to search for FITS files.
         dst_dir (str): Path to folder where you wish to store the FITS files.
@@ -48,6 +50,7 @@ def move_fits_files_rec(src_dir,dst_dir):
 def directory_config(evt,telescope,src_dir,rd=""):
     """
     Create directory structure for use with PLD-ulens. Working directory must contain your python project that uses PLD-ulens, otherwise you must specify the project's working directory with the 'wd' input.
+    
     Args:
         evt (str): Name of the event, e.g. 'ob171140' for OGLE-2017-BLG-1140.
         telescope (str): Name of the telescope, e.g. 'spitzer'.
