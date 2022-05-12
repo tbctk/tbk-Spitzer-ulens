@@ -3,7 +3,11 @@ import pickle
 from scipy import optimize as opt
 from . import plot
 
-class MuLensEvent(object):    
+class MuLensEvent(object):
+    """
+    Class to store a single microlensing event and all its data.
+    """
+    
     def __init__(self,name,telescope,AOR,TIMES,XDATA,YDATA,IMG,IMG_E):
         self.name      = name
         self.telescope = telescope

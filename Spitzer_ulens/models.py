@@ -3,6 +3,15 @@ import VBBinaryLensing
 import os
 from MulensModel import Model, SatelliteSkyCoord, MODULE_PATH
 
+#class Models(object):
+#    
+#    def list_models():
+#        models = [func for func in dir(Models) if callable(getattr(Models, func)) 
+#                  and not func.startswith("__") 
+#                  and not func.startswith("list_")]
+#
+#class LightCurveModels(Models):
+    
 def single_lens(time, fb, t0, fs, tE):
     """4-parameters single lens model approximation. Note: need to find the source...
     Args:
@@ -65,7 +74,7 @@ def iterate_from(item):
         yield item
         item = item.next
 
-        
+
 def binary_lens(t, s, q, rho, alpha, tE, t0, u0):
     VBBL = VBBinaryLensing.VBBinaryLensing()
     VBBL.RelTol = 1e-03
