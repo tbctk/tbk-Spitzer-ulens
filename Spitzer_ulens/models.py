@@ -14,13 +14,15 @@ from MulensModel import Model, SatelliteSkyCoord, MODULE_PATH
     
 def single_lens(time, fb, t0, fs, tE):
     """4-parameters single lens model approximation. Note: need to find the source...
+    
     Args:
         time (1D array): Time array (in days)
         fb (float): Baseline flux.
         t0 (float): time of closest alignment.
         fs (float): 
         tE (float): Einstein radius crossing time
-    Return:
+        
+    Returns:
         1D array: flux array corresponding to the time stamps.
     """
     ts = (time-t0)/(tE/np.sqrt(12))
@@ -29,6 +31,7 @@ def single_lens(time, fb, t0, fs, tE):
 
 def single_lens_5(t, tE, t0, fb, fs, u0):
     """5-parameters single lens model approximation (see Gaudi (2011) Review on Exoplanetary Microlensing)
+    
     Args:
         time (1D array): Time array (in days)
         tE (float): Einstein radius crossing time
@@ -36,6 +39,7 @@ def single_lens_5(t, tE, t0, fb, fs, u0):
         u0 (float): angular separation between lens and source at closest approach in units of Einstein ring.
         fb (float): Baseline flux
         fs (float): Source flux
+        
     Return:
         1D array: flux array corresponding to the time stamps.
     """
@@ -47,12 +51,14 @@ def single_lens_5(t, tE, t0, fb, fs, u0):
 
 def position_LP(t, alpha, tE, t0, u0):
     """Position of the center of the source with respect to the center of mass.
+    
     Args:
         t (1D array): time array
         alpha (float): angle between lens axis and source trajectory
         tE (float): Einstein radius crossing time
         t0 (float): time of peak magnification
         u0 (float): impact parameter
+        
     Returns:
         1D array: tau (time rescale in terms of einstein crossing time)
         1D array: y1 coordinate (along one axis) of source trajectory on the lens plane
@@ -105,6 +111,7 @@ def BL_caustic_curves(VBBL, s, q):
 
 def binary_lens_mag(t, s, q, rho, alpha, tE, t0, u0, returns='flux'):
     """ Use VBBinaryLensing to generate lightcurve and caustics for a binary lens model.
+    
     Args:
         t (1D array): time array
         s (float): separation between the two lenses in units of total angular Einstein radii
@@ -114,8 +121,10 @@ def binary_lens_mag(t, s, q, rho, alpha, tE, t0, u0, returns='flux'):
         tE (float): Einstein radius crossing time
         t0 (float): time of peak magnification
         u0 (float): impact parameter
+        
     Return: 
         1D array: flux array corresponding to the time stamps.
+        
     Return:
         2D array: x and y coordinates of caustic curves on the lens plane
         2D array: x and y coordinates of critical curves on the lens plane
@@ -140,10 +149,12 @@ def binary_lens_mag(t, s, q, rho, alpha, tE, t0, u0, returns='flux'):
 
 def binary_lens_flux(mag, fb=0, fs=1):
     """Given a magnification curve, a baseline flux and a source flux, this is will return the lightcurve (flux) with appropriate scaling factors.
+    
     Args:
         mag (1D array): magnification curve
         fb (float): baseline flux
         fs (float): source flux
+        
     Return:
         array: flux array with fb and fs scaling factors
     """
@@ -152,10 +163,12 @@ def binary_lens_flux(mag, fb=0, fs=1):
 
 def single_lens_flux(mag, fb=0, fs=1):
     """Given a magnification curve, a baseline flux and a source flux, this is will return the lightcurve (flux) with appropriate scaling factors.
+    
     Args:
         mag (1D array): magnification curve
         fb (float): baseline flux
         fs (float): source flux
+        
     Return:
         array: flux array with fb and fs scaling factors
     """
@@ -164,6 +177,7 @@ def single_lens_flux(mag, fb=0, fs=1):
 
 def binary_lens_all(t, s, q, rho, alpha, tE, t0, u0, fb, fs):
     """ Use VBBinaryLensing to generate lightcurve and caustics for a binary lens model.
+    
     Args:
         t (1D array): time array
         s (float): separation between the two lenses in units of total angular Einstein radii
@@ -173,8 +187,10 @@ def binary_lens_all(t, s, q, rho, alpha, tE, t0, u0, fb, fs):
         tE (float): Einstein radius crossing time
         t0 (float): time of peak magnification
         u0 (float): impact parameter
+        
     Return: 
         1D array: flux array corresponding to the time stamps.
+        
     Return:
         2D array: x and y coordinates of caustic curves on the lens plane
         2D array: x and y coordinates of critical curves on the lens plane
@@ -265,6 +281,7 @@ def binary_lens_flux_par_sat(t_sat, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E
 
 def binary_lens_mag_par_both(time_g, time_s, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E, coord):
     """Uses Mulens to generate Spitzer Parallax lightcurves.
+    
     Args:
         t (1D array): time array
         s (float): separation between the two lenses in units of total angular Einstein radii
@@ -312,6 +329,7 @@ def binary_lens_mag_par_both(time_g, time_s, s, q, rho, alpha, tE, t0, u0, pi_E_
 
 def binary_lens_flux_par_both(time_g, time_s, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E, fb_g, fs_g, fb_s, fs_s, coord):
     """Uses Mulens to generate Spitzer Parallax lightcurves.
+    
     Args:
         t (1D array): time array
         s (float): separation between the two lenses in units of total angular Einstein radii
@@ -363,6 +381,7 @@ def binary_lens_flux_par_both(time_g, time_s, s, q, rho, alpha, tE, t0, u0, pi_E
 
 def single_lens_mag_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, coord):
     """Uses Mulens to generate Spitzer Parallax lightcurves.
+    
     Args:
         t (1D array): time array
         s (float): separation between the two lenses in units of total angular Einstein radii
@@ -401,6 +420,7 @@ def single_lens_mag_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, coord):
 
 def single_lens_flux_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, fb_g, fs_g, fb_s, fs_s, coord):
     """Uses Mulens to generate Spitzer Parallax lightcurves.
+    
     Args:
         t (1D array): time array
         s (float): separation between the two lenses in units of total angular Einstein radii
