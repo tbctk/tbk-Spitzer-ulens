@@ -6,14 +6,44 @@ import time as ti
 from tqdm import tqdm
 import os
 
-class PLDCoeffsChain:
+class PLDCoeffsChain(object):
+    """
+    Wrapper class for a chain of PLD coefficients, to make it mutable.
+    
+    Attributes:
+        chain: An array containing the PLD coefficient chain, which will expand over the course of the MCMC.
+    """
     def __init__(self,coeffs):
         self.chain = [np.asarray(coeffs)]
     
     def update_chain(self,coeffs):
+        """
+        Updates the chain to include the latest set of PLD coefficients.
+        
+        Args:
+            coeffs (list of float): List of PLD coefficients to be appended to this chain.
+        """
         self.chain = np.concatenate((self.chain,[np.asarray(coeffs)]))
 
 def get_MCMC_sampler(p0,modelfunc,TIMES,PTOT,PTOT_E,E_BIN,PNORM,PLD_chain,pool=None,nwalkers=100,bounds=None):
+    """
+    Produces an emcee MCMC sampler that uses the PLD log-likelihood function.
+    
+    Args:
+        p0 (list of float): Initial parameter guess.
+        modelfunc (function): Model function. Must be able to be called via modelfunc(time,*pars).
+        TIMES (list of float): Dithered time data from which to evaluate model fit.
+        PTOT (list of float): Dithered raw photometric data.
+        PTOT_E (list of float): Raw photometric error.
+        PNORM (list of float): Dithered fractional flux.
+        PLD_Chain (PLDCoeffsChain object): PLD coefficient chain to store PLD coefficients
+        pool (multiprocessing.Pool object, optional): Multiprocessing pool, see documentation (TODO)
+        nwalkers (int): Number of MCMC walkers to employ, defaults to 100.
+        bounds (list, optional): Bounds on model parameters to impose upon MCMC walkers. Must be of shape (n_par,n_par) where the first element is the lower bound, second is upper bound.
+        
+    Returns:
+        sampler (emcee.EnsembleSampler object): MCMC sampler that uses the PLD log-likelihood function.
+    """
     ndim = len(p0)
     # sampler
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob, a = 2, pool=pool,
@@ -24,7 +54,14 @@ def get_MCMC_sampler(p0,modelfunc,TIMES,PTOT,PTOT_E,E_BIN,PNORM,PLD_chain,pool=N
 
 def lnprior(p0,bounds):
     """
-    Constrain parameters based on prior known bounds. Currently a step function.    
+    Constrain parameters based on prior known bounds. Currently just a basic step function that disallows paramters outside bounds.
+    
+    Args:
+        p0 (list of float): Parameter values for this MCMC iteration.
+        bounds (list or None): If None, no bounds are imposed. Otherwise, must be of shape (n_par,n_par) where the first element is the lower bound, second is upper bound.
+        
+    Returns:
+        0 if the parameter values are within the bounds, negative infinity otherwise. This ensures that if the parameters are unphysical, the likelihood will go to negative infinity and the iteration will be discarded.
     """
     if bounds is None:
         return 0
@@ -35,8 +72,20 @@ def lnprior(p0,bounds):
 
 def lnlike(p0, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, PLD_chain):
     """
+    Computes the log-likelihood for model to fit the given data. Updates the PLD coefficient chain accordingly.
+    
     Args:
-    Return:
+        p0 (list of float): Initial parameter guess.
+        func (function): Model function. Must be able to be called via func(time,*pars).
+        TIMES (list of float): Dithered time data from which to evaluate model fit.
+        PTOT (list of float): Dithered raw photometric data.
+        PTOT_E (list of float): Raw photometric error.
+        E_BIN (float): Estimate of raw photometric scatter.
+        PNORM (list of float): Dithered fractional flux.
+        PLD_Chain (PLDCoeffsChain object): PLD coefficient chain to store PLD coefficients.
+    
+    Returns:
+        like (float): log-likelihood for the model to fit the given data.
     """
     # solving for PLD coefficients analytically
     Y, Astro, Ps, A, C, E, X = PLD.analytic_solution(TIMES, PTOT, PTOT_E, PNORM, p0, func)
@@ -62,6 +111,23 @@ def lnlike(p0, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, PLD_chain):
     return like
     
 def lnprob(p0, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, PLD_chain, bounds):
+    """
+    Computes the log-likelihood for model to fit the given data, constrained by the provided bounds. Updates the PLD coefficient chain accordingly.
+    
+    Args:
+        p0 (list of float): Initial parameter guess.
+        func (function): Model function. Must be able to be called via func(time,*pars).
+        TIMES (list of float): Dithered time data from which to evaluate model fit.
+        PTOT (list of float): Dithered raw photometric data.
+        PTOT_E (list of float): Raw photometric error.
+        E_BIN (float): Estimate of raw photometric scatter.
+        PNORM (list of float): Dithered fractional flux.
+        PLD_Chain (PLDCoeffsChain object): PLD coefficient chain to store PLD coefficients.
+        bounds (list or None): If None, no bounds are imposed. Otherwise, must be of shape (n_par,n_par) where the first element is the lower bound, second is upper bound.
+    
+    Returns:
+        Float representing log-likelihood for the model to fit the given data, or negative infinity if the parameters fall outside the bounds.
+    """
     # get lnprior
     lp = lnprior(p0,bounds)
     # if guess is out of bound
@@ -72,7 +138,19 @@ def lnprob(p0, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, PLD_chain, bounds):
 
 def run_mcmc(sampler,pos0,nsteps,visual=True,label=''):
     """
-    Runs nsteps samples of MCMC using the given sampler and starting positions.
+    Runs MCMC using the given sampler and starting positions.
+    
+    Args:
+        sampler (emcee.EnsembleSampler object): emcee MCMC sampler as returned by the get_MCMC_sampler function.
+        pos0 (list of float): Initial parameter positions for each walker.
+        nsteps (int): Number of MCMC steps to take.
+        visual (bool): If true, displays some runtime information along with a tqdm progress bar.
+        label (str, optional): Label to distinguish this MCMC run. Will be displated if visual is set to `True`.
+        
+    Returns:
+        pos (list of int): Final position of the MCMC walkers.
+        prob (list of int): Log-probabilities for positions pos.
+        state ():
     """
     if visual:
         tic = ti.time()
@@ -89,49 +167,18 @@ def run_mcmc(sampler,pos0,nsteps,visual=True,label=''):
         pos,prob,state = sampler.run_mcmc(pos0,nsteps)
         return pos,prob,state
 
-def run_MCMC(sampler,pos0,visual=True,nburnin=300,nprod=1000):
-    #First burn-in:
-    tic = ti.time()
-    print('Running burn-in')
-    for pos1, prob, state in tqdm(sampler.sample(pos0, iterations=nburnin),total=nburnin):
-        #print(np.mean(pos1,axis=0))
-        pass
-
-    print("Mean burn-in acceptance fraction: {0:.3f}"
-                        .format(np.mean(sampler.acceptance_fraction)))
-    sampler.reset()
-    toc = ti.time()
-    print('MCMC runtime = %.2f min\n' % ((toc-tic)/60.))
-    
-    #Second burn-in
-    #Continue from best spot from last time, and do quick burn-in to get walkers spread out
-    tic = ti.time()
-    print('Running second burn-in')
-    pos2 = pos1[np.argmax(prob)]
-    # slightly change position of walkers to prevent them from taking the same path
-    pos2 = [pos2*(1+1e-6*np.random.randn(sampler.ndim))+1e-6*np.abs(np.random.randn(sampler.ndim)) for i in range(sampler.nwalkers)]
-    for pos2, prob, state in tqdm(sampler.sample(pos2, iterations=nburnin),total=nburnin):
-        pass
-    print('Mean burn-in acceptance fraction: {0:.3f}'
-                        .format(np.median(sampler.acceptance_fraction)))
-    sampler.reset()
-    toc = ti.time()
-    print('MCMC runtime = %.2f min\n' % ((toc-tic)/60.))
-    
-    #Run production
-    #Run that will be saved
-    tic = ti.time()
-    # Continue from last positions and run production
-    print('Running production')
-    for pos3, prob, state in tqdm(sampler.sample(pos2, iterations=nprod),total=nprod):
-        pass
-    print("Mean acceptance fraction: {0:.3f}"
-                        .format(np.mean(sampler.acceptance_fraction)))
-    toc = ti.time()
-    print('MCMC runtime = %.2f min\n' % ((toc-tic)/60.))
-    return sampler.chain,pos3,sampler.lnprobability
-
 def save_results(evt,chain,posit,lnprob,PLD_coeffs=None,folder=''):
+    """
+    Save MCMC chains.
+    
+    Args:
+        evt (str): Abridged event name.
+        chain (list of float): Full walker position chain.
+        posit (list of float): Final walker positions.
+        lnprob (list of float): Walker log-probability chain.
+        PLD_coeffs (PLDCoeffsChain object, optional): PLD coefficient chain to be saved.
+        folder (str, optional): Extra sorting option to save the results in a mega_MCMC sub-folder.
+    """
     #Saving MCMC Results
     savepath = 'data/'+ evt + '/mega_MCMC/'
     savepath = os.path.join(savepath,folder)
@@ -156,6 +203,19 @@ def save_results(evt,chain,posit,lnprob,PLD_coeffs=None,folder=''):
     return
 
 def get_MCMC_results(chain,lnprob):
+    """
+    Get optimal parameters and errors from the MCMC run.
+    
+    Args:
+        chain (list of float): Full walker position chain.
+        lnprob (list of float): Walker log-probability chain.
+    
+    Returns:
+        popt (list of float): Mean parameter positions.
+        pmax (list of float): Most likely parameter positions.
+        std_hi (list of float): Upper standard deviation on the best-fit parameter positions.
+        std_hi (list of float): Lower standard deviation on the best-fit parameter positions.
+    """
     _,_,npars = chain.shape
     posit = chain.reshape(-1,npars)
 
@@ -173,7 +233,23 @@ def get_MCMC_results(chain,lnprob):
     
     return popt,pmax,std_hi,std_lo
 
-def get_BIC(popt_mcmc, MODELFUNC, TIMES, PTOT, PTOT_E, E_BIN, PNORM, X):
+def get_BIC(popt, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, X):
+    """
+    Compute the BIC (Bayesian Information Criterion) for the given parameters, using our log-likehihood function and data.
+    
+    Args:
+        popt (list of float): Parameters to compute BIC for.
+        func (function): Model function, must be called as per func(times,*popt).
+        TIMES (list of float): Dithered time data from which to evaluate model fit.
+        PTOT (list of float): Dithered raw photometric data.
+        PTOT_E (list of float): Raw photometric error.
+        E_BIN (float): Estimate of raw photometric scatter.
+        PNORM (list of float): Dithered fractional flux.
+        X (list of float): PLD Coefficients or empty array of same size (TODO: REMOVE THIS)
+    
+    Returns:
+        A float representing the BIC for this data, model, and model parameters. The BIC provides a likelihood that is corrected to compensate for complex-model overfitting.
+    """
     dudchain = PLDCoeffsChain(np.zeros(np.size(X)))
-    ll = lnlike(popt_mcmc, MODELFUNC, TIMES, PTOT, PTOT_E, E_BIN, PNORM, dudchain)
+    ll = lnlike(popt, func, TIMES, PTOT, PTOT_E, E_BIN, PNORM, dudchain)
     return popt_mcmc.size*np.log(PTOT.size)-ll

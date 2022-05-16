@@ -58,13 +58,13 @@ def directory_config(evt,telescope,src_dir,rd=""):
         rd (str, optional): Destination root project directory. Defaults to current working directory
     """
 
-    dst_dir = rd+'/data/'+evt+'/'+telescope+'/images'
+    dst_dir = os.path.join(rd,'data',evt,telescope,'images')
 
     make_path(dst_dir)
     move_fits_files_rec(src_dir,dst_dir)
 
     # Make input folder for PLD_Decorrelation
-    dst_dir2 = rd+'/data/'+evt+'/PLD_input'
+    dst_dir2 = os.path.join(rd,'data',evt,'PLD_input')
     make_path(dst_dir2)
     return
 
