@@ -67,7 +67,7 @@ class MuLensEvent(object):
         return PNORM
     
     def chrono_flatten(self,*argv):
-        """Returns lst flattened and sorted chronologically as per this event's time vector
+        """Returns lst flattened and sorted chronologically as per this event's time vector. NOT USED
         Args:
             lst (list): list to be sorted and flattened, must have same fundamental size as TIME
         Returns:
@@ -83,8 +83,7 @@ class MuLensEvent(object):
         return tuple(returnv)
     
     def modelfit(self,func,p0,PTOT,makeplots=False,**kwargs):
-        time,ptot = self.chrono_flatten(PTOT)
-        popt, pcov = opt.curve_fit(f=func,xdata=time,ydata=ptot,p0=p0,**kwargs) 
+        popt, pcov = opt.curve_fit(f=func,xdata=self.TIMES.ravel(),ydata=PTOT.ravel(),p0=p0,**kwargs) 
         perr = np.sqrt(np.diag(pcov)) # assuming uncorrelated
         bestfit = func(time,*popt)
         resi = ptot-bestfit

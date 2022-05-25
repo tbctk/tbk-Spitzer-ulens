@@ -11,6 +11,13 @@ from MulensModel import Model, SatelliteSkyCoord, MODULE_PATH
 #                  and not func.startswith("list_")]
 #
 #class LightCurveModels(Models):
+ 
+
+def fix_pars(model_func,**fix):
+    def wrapper(t,*pars,**kwpars):
+        return model_func(t,*pars,**kwpars,**fix)
+    return wrapper
+    
     
 def single_lens(time, fb, t0, fs, tE):
     """4-parameters single lens model approximation. Note: need to find the source...

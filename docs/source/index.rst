@@ -27,3 +27,4 @@ Contents
     :caption: Table of Contents
     
     Spitzer_ulens
+    usage
