@@ -167,6 +167,80 @@ def run_mcmc(sampler,pos0,nsteps,visual=True,label=''):
         pos,prob,state = sampler.run_mcmc(pos0,nsteps)
         return pos,prob,state
 
+# Parallax
+
+def lnprob(self,l_pars,bounds,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err)
+    pars = l_pars[:-2]
+    l_s,l_g = l_pars[-2:]
+    lp = self.lnprior(pars,bounds)
+    if not np.isfinite(lp):
+        return -np.inf
+    return lp + self.lnlike(pars,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err,l_s,l_g)
+
+def lnprior(self,pars,bounds):
+    if bounds is None:
+        return 0
+    else:
+        if all(pars>bounds[0]) and all(pars<bounds[1]):
+            return 0.0
+        else: 
+            return -np.inf
+
+def lnlike(self,pars,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err,l_s,l_g):
+    Y, Astro, Ps, A, X, flu_g  = PLD.analytic_solution(time,flux,flux_err,flux_frac,pars,self.__func__,time_g)
+    # Generating time series from bestfit params
+    FIT, SYS, CORR, RESI = PLD.get_bestfit(A, Ps, X, PTOT, Astro)
+
+    like = 0
+    for i in range(len(TIMES)):
+        Ndat = len(PTOT[i])
+        # diff (don't forget ravel, otherwise you'll have some matrix operation!)
+        diff  = PTOT[i]-FIT[i].ravel()
+        diff2 = PTOT[i]-Astro[i].ravel()
+        # error
+        inerr  = 1/(l_s*PTOT_E[i])
+        inerr2 = 1/(err_bin)
+        # likelihood (np.log(np.sqrt(2*np.pi)) = 0.9189385332046727)
+        like  += -0.5*np.sum(diff**2*inerr**2) + np.sum(np.log(inerr)) - Ndat*0.9189385332046727
+        like  += -0.5*np.sum(diff2**2/err_bin**2) + Ndat*np.log(inerr2) - Ndat*0.9189385332046727
+    # likelihood for ground-based
+    diffg = flux_g-flu_g
+    inerrg = 1/(l_g*flux_g_err)
+    like += -0.5*np.sum(diffg**2*inerrg**2) + np.sum(np.log(inerrg)) - len(diffg)*0.9189385332046727
+    return like
+
+def run_mcmc(sampler,pos0,nsteps,visual=True,label=''):
+    """
+    Runs MCMC using the given sampler and starting positions.
+    
+    Args:
+        sampler (emcee.EnsembleSampler object): emcee MCMC sampler as returned by the get_MCMC_sampler function.
+        pos0 (list of float): Initial parameter positions for each walker.
+        nsteps (int): Number of MCMC steps to take.
+        visual (bool): If true, displays some runtime information along with a tqdm progress bar.
+        label (str, optional): Label to distinguish this MCMC run. Will be displated if visual is set to `True`.
+        
+    Returns:
+        pos (list of int): Final position of the MCMC walkers.
+        prob (list of int): Log-probabilities for positions pos.
+        state ():
+    """
+    if visual:
+        tic = ti.time()
+        print('Running MCMC '+label+'...')
+        
+        for pos, prob, state in tqdm(sampler.sample(pos0, iterations=nsteps),total=nsteps):
+            pass
+
+        print("Mean burn-in acceptance fraction: {0:.3f}".format(np.mean(sampler.acceptance_fraction)))
+        toc = ti.time()
+        print('MCMC runtime = %.2f min\n' % ((toc-tic)/60.))
+        return pos,prob,state
+    else:
+        pos,prob,state = sampler.run_mcmc(pos0,nsteps)
+        return pos,prob,state
+    
+    
 def save_results(evt,chain,posit,lnprob,PLD_coeffs=None,folder=''):
     """
     Save MCMC chains.

@@ -193,10 +193,11 @@ def divide_per_dither(centroid_data):
         cbunc (ndarray of str): Names of CBUNC files
     """
     dithers = np.unique(centroid_data[:,5])
+    print(dithers)
     data_dit = []
     for i in dithers:
-        data_dit.append(centroid_data[np.where(centroid_data[:,5] == i)])
-    data_dit = np.asarray(data_dit)
+        data_dit.append(centroid_data[centroid_data[:,5] == i])
+    data_dit = np.array(data_dit,dtype=object)
     AORs = data_dit[:,:,0]
     times = data_dit[:,:,1].astype(np.float)
     xps = data_dit[:,:,2].astype(np.float)

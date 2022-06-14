@@ -416,8 +416,7 @@ def single_lens_mag_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, coord):
     model_parallax.parallax(earth_orbital = False, satellite = True)
 
     # necessary path to ephemeris of the observatory (must for parallax)
-    MODULE_PATH = '/Users/ldang/Desktop/spitzer-ulens-tozip-20-01-29/MulensModel'
-    satellite = SatelliteSkyCoord(os.path.join(MODULE_PATH, 'data/ephemeris_files', 'Spitzer_ephemeris_02.dat'))
+    satellite = SatelliteSkyCoord('data/ob171140/spitzer/Spitzer_ephemeris_02.dat')
 
     # get magnification curve
     mag_gro = model_parallax.magnification(time=time_g)
@@ -429,11 +428,6 @@ def single_lens_flux_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, fb_g, 
     """Uses Mulens to generate Spitzer Parallax lightcurves.
     
     Args:
-        t (1D array): time array
-        s (float): separation between the two lenses in units of total angular Einstein radii
-        q (float): mass ratio: mass of the lens on the right divided by mass of the lens on the left
-        rho (float): source radius in Einstein radii of the total mass (if not a point-source)
-        alpha (float): angle between lens axis and source trajectory (in rad)
         tE (float): Einstein radius crossing time
         t0 (float): time of peak magnification
         u0 (float): impact parameter
