@@ -1,11 +1,5 @@
 import numpy as np
-from . import models
-from . import MuLensEvent
-import emcee
 import time as ti
-from tqdm import tqdm
-import os
-from . import mcmc
     
 def analytic_solution(time,flux,flux_err,flux_frac,pars,func,time_g=None):
     """As our model is a linear function, we can solve for the best-fit parameters analytically.
@@ -138,8 +132,8 @@ def get_RMS(residual,label='RMS',visual=False):
         print(label, ' : ', RMS)
     return RMS
 
-def get_BIC(func,popt,time,flux,flux_err,flux_scatter,flux_frac):
-    ndit,_,sx,sy = flux_frac.shape
-    dudchain = mcmc.PLDCoeffsChain(np.empty(ndit*sx*sy))
-    lnlike = mcmc.lnlike(popt_mcmc, func, time, flux, flux_err, flux_scatter, flux_frac, dudchain)
-    return popt_mcmc.size*np.log(ptot.size)-lnlike
+#def get_BIC(func,popt,time,flux,flux_err,flux_scatter,flux_frac):
+#    ndit,_,sx,sy = flux_frac.shape
+#    dudchain = mcmc.PLDCoeffsChain(np.empty(ndit*sx*sy))
+#    lnlike = mcmc.lnlike(popt_mcmc, func, time, flux, flux_err, flux_scatter, flux_frac, dudchain)
+#    return popt_mcmc.size*np.log(ptot.size)-lnlike

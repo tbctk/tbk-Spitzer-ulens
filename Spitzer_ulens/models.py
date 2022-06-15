@@ -1,464 +1,142 @@
+"""This module contains the LCModel abstract base class and some useful implementations of it.
+
+LCModel is used as a wrapper class for a light-curve function, with some extra functionalities. 
+To use the LCModel abstract base class, users can either choose one of the included implementations 
+or create their own. The models included are the SingleLensModel, BinaryLensModel, and 
+SingleLensParallaxModel. The SingleLensModel and BinaryLensModel classes are examples of the 
+simplest form of an LCModel. They are simply a function, defined by the 'func' method, wrapped by 
+the __call__ method, which allows the model to be created and called as follows:
+
+    my_1l_model = SingleLensModel()
+    flux = my_1l_model(time,*pars)
+
+The SingleLensParallaxModel is an example of a more complex model that takes advantage of the 
+structure of the LCModel. A SingleLensParallaxModel must be initialized with its event coordinates 
+and a path to its satellite ephemeris file:
+
+    my_1lpar_model = SingleLensParallaxModel()
+    flux_satellite,flux_ground = my_1lpar_model(time_satellite,time_ground,*pars)
+    
+Note that the return type can be different for different abstractions of the LCModel, and this is 
+up to the user to handle. See the descriptions of the individual classes for more details on their 
+methods and applications.
+
+One can create their own user-defined LCModel by defining a class to extend the LCModel abstract 
+base class and then overwrite the 'func' method with their own desired function. For example, a 
+Gaussian model:
+
+    class GaussianModel(LCModel):
+        def func(self,time,mean,std):
+            return np.exp(-0.5*((time-mean)/std)**2)
+
+One can also overwrite the '__init__' method to add special properties of the model. For example, 
+suppose one wanted to create a single-lens model with one fixed parameter:
+
+    class SingleLensModel_FixedFb(LCModel):
+        def __init__(self,fb):
+            self.fb = fb
+        
+        def func(self,t0,fs,tE):
+            slmodel = models.SingleLensModel()
+            return slmodel(self.fb,t0,fs,tE)
+"""
+
+
 import numpy as np
-import VBBinaryLensing
-import os
-from MulensModel import Model, SatelliteSkyCoord, MODULE_PATH
+from inspect import signature, BoundArguments
+from abc import ABC,abstractmethod
+import MulensModel as mm
+from Spitzer_ulens import PLD
 
-#class Models(object):
-#    
-#    def list_models():
-#        models = [func for func in dir(Models) if callable(getattr(Models, func)) 
-#                  and not func.startswith("__") 
-#                  and not func.startswith("list_")]
-#
-#class LightCurveModels(Models):
- 
+class LCModel(ABC):
 
-def fix_pars(model_func,**fix):
-    def wrapper(t,*pars,**kwpars):
-        return model_func(t,*pars,**kwpars,**fix)
-    return wrapper
+    def __call__(self,*pars,**kwpars):
+        return self.func(*pars,**kwpars)
     
+    @abstractmethod
+    def func(self,*pars,**kwpars):
+        pass
     
-def single_lens(time, fb, t0, fs, tE):
-    """4-parameters single lens model approximation. Note: need to find the source...
+    @staticmethod
+    def mag2flux(mag,fb,fs):
+        return mag*fs+fb
     
-    Args:
-        time (1D array): Time array (in days)
-        fb (float): Baseline flux.
-        t0 (float): time of closest alignment.
-        fs (float): 
-        tE (float): Einstein radius crossing time
+class SingleLensParallaxModel(LCModel):
+    
+    def __init__(self,coords,ephemeris_file_path):
+        self.satellite = mm.SatelliteSkyCoord(ephemeris_file_path)
+        if isinstance(coords,tuple):
+            self.coords = '%s %s'%coords
+        elif isinstance(coords,str):
+            self.coords = coords
+        else:
+            raise Exception('Unrecognized coordinate format')
+    
+    def func(self,t_s,t_g,tE,t0,u0,pi_E_N,pi_E_E,fb_g,fs_g,fb_s,fs_s):
+
+        mag_s,mag_g = self.get_mag(t_s,t_g,tE,t0,u0,pi_E_N,pi_E_E)
         
-    Returns:
-        1D array: flux array corresponding to the time stamps.
-    """
-    ts = (time-t0)/(tE/np.sqrt(12))
-    flux = fb+fs/(np.sqrt(ts**2 +1))
-    return flux
-
-def single_lens_5(t, tE, t0, fb, fs, u0):
-    """5-parameters single lens model approximation (see Gaudi (2011) Review on Exoplanetary Microlensing)
-    
-    Args:
-        time (1D array): Time array (in days)
-        tE (float): Einstein radius crossing time
-        t0 (float): Time of closest alignment
-        u0 (float): angular separation between lens and source at closest approach in units of Einstein ring.
-        fb (float): Baseline flux
-        fs (float): Source flux
+        flux_g = self.mag2flux(mag_g,fb_g,fs_g)
+        flux_s = self.mag2flux(mag_s,fb_s,fs_s)
         
-    Return:
-        1D array: flux array corresponding to the time stamps.
-    """
-
-    u = np.sqrt(u0**2+((t-t0)/tE)**2)
-    A = (u**2+2)/(u*np.sqrt(u**2+4))
-    flux = fb + A*fs
-    return flux
-
-def position_LP(t, alpha, tE, t0, u0):
-    """Position of the center of the source with respect to the center of mass.
+        return flux_s,flux_g
     
-    Args:
-        t (1D array): time array
-        alpha (float): angle between lens axis and source trajectory
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
+    def get_mag(self,t_s,t_g,tE,t0,u0,pi_E_N,pi_E_E):
+        #time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, coord)):
+        params        = {'t_0': t0, 'u_0': u0, 't_E': tE}
+        params_pi_E   = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
         
-    Returns:
-        1D array: tau (time rescale in terms of einstein crossing time)
-        1D array: y1 coordinate (along one axis) of source trajectory on the lens plane
-        1D array: y2 coordinate (along one axis) of source trajectory on the lens plane
-    """
-    tau = (t - t0)/tE
-    # from Seb. Calchi Novati
-    y1 = u0*np.sin(alpha) - tau*np.cos(alpha)
-    y2 = -u0*np.cos(alpha) - tau*np.sin(alpha)
-    # sign inversed in Fran Bartolic's Example
-    #y1 = -u0*np.sin(alpha) + tau*np.cos(alpha)
-    #y2 = u0*np.cos(alpha) + tau*np.sin(alpha)
-    return tau, y1, y2
-
-def iterate_from(item):
-    """Iterating over item
-    """
-    while item is not None:
-        yield item
-        item = item.next
-
-
-def binary_lens(t, s, q, rho, alpha, tE, t0, u0):
-    VBBL = VBBinaryLensing.VBBinaryLensing()
-    VBBL.RelTol = 1e-03
-
-    # Position of the center of the source with respect to the center of mass.
-    tau, y1, y2 = position_LP(t, alpha, tE, t0, u0)
-
-def BL_caustic_curves(VBBL, s, q):
-    """Generate caustic and critical curves.
-    Args:
-
-    Returns:
-
-    """
-    # Calculate the cirtical curves and the caustic curves
-    solutions = VBBL.PlotCrit(s, q) # Returns _sols object containing n crit. curves followed by n caustic curves
-
-    # generator function iterating over _sols, _curve, or _point objects 
-    # making use of the next keyword
-    curves = []
-    for curve in iterate_from(solutions.first):
-        for point in iterate_from(curve.first):
-            curves.append((point.x1, point.x2))
-
-    critical_curves = np.array(curves[:int(len(curves)/2)])
-    caustic_curves  = np.array(curves[int(len(curves)/2):])
-    return caustic_curves, critical_curves
-
-def binary_lens_mag(t, s, q, rho, alpha, tE, t0, u0, returns='flux'):
-    """ Use VBBinaryLensing to generate lightcurve and caustics for a binary lens model.
-    
-    Args:
-        t (1D array): time array
-        s (float): separation between the two lenses in units of total angular Einstein radii
-        q (float): mass ratio: mass of the lens on the right divided by mass of the lens on the left
-        rho (float): source radius in Einstein radii of the total mass (if not a point-source)
-        alpha (float): angle between lens axis and source trajectory
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
+        #model = mm.Model({**params}, coords=self.coords)
         
-    Return: 
-        1D array: flux array corresponding to the time stamps.
+        model_parallax = mm.Model({**params, **params_pi_E}, coords = self.coords) 
+        model_parallax.parallax(earth_orbital = False, satellite = True)
         
-    Return:
-        2D array: x and y coordinates of caustic curves on the lens plane
-        2D array: x and y coordinates of critical curves on the lens plane
-    """
-    # Initialize VBBinaryLensing() class object, set relative accuracy
-    VBBL = VBBinaryLensing.VBBinaryLensing()
-    VBBL.RelTol = 1e-03
-
-    # Position of the center of the source with respect to the center of mass.
-    tau, y1, y2 = position_LP(t, alpha, tE, t0, u0)
-
-    # empty array where magnification will be stored
-    mag = np.zeros(len(tau))
-
-    # calculate the magnification at each time
-    params = [np.log(s), np.log(q), u0, alpha, np.log(rho), np.log(tE), t0]
-    mag = VBBL.BinaryLightCurve(params, t, y1, y2)
-    if returns=='flux':
-        return np.array(mag)
-    elif returns=='caustics':
-        return BL_caustic_curves(VBBL, s, q)
-
-def binary_lens_flux(mag, fb=0, fs=1):
-    """Given a magnification curve, a baseline flux and a source flux, this is will return the lightcurve (flux) with appropriate scaling factors.
+        mag_g = model_parallax.get_magnification(time=t_g)
+        mag_s = model_parallax.get_magnification(time=t_s, 
+                                               satellite_skycoord=self.satellite.get_satellite_coords(t_s))
+        return mag_s,mag_g
     
-    Args:
-        mag (1D array): magnification curve
-        fb (float): baseline flux
-        fs (float): source flux
+    def lnprob(self,l_pars,bounds,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err):
+        pars = l_pars[:-2]
+        l_s,l_g = l_pars[-2:]
+        lp = self.lnprior(pars,bounds)
+        if not np.isfinite(lp):
+            return -np.inf
+        return lp + self.lnlike(pars,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err,l_s,l_g)
         
-    Return:
-        array: flux array with fb and fs scaling factors
-    """
-    flux = fb + mag*fs
-    return flux
-
-def single_lens_flux(mag, fb=0, fs=1):
-    """Given a magnification curve, a baseline flux and a source flux, this is will return the lightcurve (flux) with appropriate scaling factors.
-    
-    Args:
-        mag (1D array): magnification curve
-        fb (float): baseline flux
-        fs (float): source flux
+    def lnprior(self,pars,bounds):
+        if bounds is None:
+            return 0
+        else:
+            if all(pars>bounds[0]) and all(pars<bounds[1]):
+                return 0.0
+            else: 
+                return -np.inf
         
-    Return:
-        array: flux array with fb and fs scaling factors
-    """
-    flux = fb + mag*fs
-    return flux
+    def lnlike(self,pars,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err,l_s,l_g):
+        Y, Astro, Ps, A, X, flu_g  = PLD.analytic_solution(t_s,flux_s,flux_s_err,flux_frac,pars,self,t_g)
+        # Generating time series from bestfit params
+        FIT, SYS, CORR, RESI = PLD.get_bestfit(A, Ps, X, flux_s, Astro)
+        like = 0
+        for i in range(len(t_s)):
+            Ndat = len(flux_s[i])
+            diff  = flux_s[i]-FIT[i].ravel()
+            diff2 = flux_s[i]-Astro[i].ravel()
+            # error
+            inerr  = 1/(l_s*flux_s_err[i])
+            inerr2 = 1/(flux_scatter)
+            # likelihood (np.log(np.sqrt(2*np.pi)) = 0.9189385332046727)
+            like  += -0.5*np.sum(diff**2*inerr**2) + np.sum(np.log(inerr)) - Ndat*0.9189385332046727
+            like  += -0.5*np.sum(diff2**2/flux_scatter**2) + Ndat*np.log(inerr2) - Ndat*0.9189385332046727
+        # likelihood for ground-based
+        diffg = flux_g-flu_g
+        inerrg = 1/(l_g*flux_g_err)
+        like += -0.5*np.sum(diffg**2*inerrg**2) + np.sum(np.log(inerrg)) - len(diffg)*0.9189385332046727
+        return like
 
-def binary_lens_all(t, s, q, rho, alpha, tE, t0, u0, fb, fs):
-    """ Use VBBinaryLensing to generate lightcurve and caustics for a binary lens model.
+class SingleLensModel(LCModel):
     
-    Args:
-        t (1D array): time array
-        s (float): separation between the two lenses in units of total angular Einstein radii
-        q (float): mass ratio: mass of the lens on the right divided by mass of the lens on the left
-        rho (float): source radius in Einstein radii of the total mass (if not a point-source)
-        alpha (float): angle between lens axis and source trajectory
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
-        
-    Return: 
-        1D array: flux array corresponding to the time stamps.
-        
-    Return:
-        2D array: x and y coordinates of caustic curves on the lens plane
-        2D array: x and y coordinates of critical curves on the lens plane
-    """
-    # Initialize VBBinaryLensing() class object, set relative accuracy
-    VBBL = VBBinaryLensing.VBBinaryLensing()
-    VBBL.RelTol = 1e-03
-
-    # Position of the center of the source with respect to the center of mass.
-    tau, y1, y2 = position_LP(t, alpha, tE, t0, u0)
-
-    # empty array where magnification will be stored
-    mag = np.zeros(len(tau))
-
-    # calculate the magnification at each time
-    params = [np.log(s), np.log(q), u0, alpha, np.log(rho), np.log(tE), t0]
-    mag = VBBL.BinaryLightCurve(params, t, y1, y2)
-
-    # get flux light curve
-    flux = fb + np.array(mag)*fs
-    return flux
-
-
-def binary_lens_flux_par_gro(t_gro, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E, fb_gro, fs_gro, coord):
-    """Uses Mulens to generate binary lens groud-based lightcurve with microlens parallax.
-
-    """
-    # Define model parameters .
-    params = {'t_0': t0, 'u_0': u0, 't_E': tE}
-    params_pi_E = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
-    ra_dec = coord
-    params_planet = {'rho': rho, 's': s, 'q': q, 'alpha': -np.rad2deg(alpha)}
-
-    # Set models and satellite settings
-    model_planet = Model({**params, **params_planet}, coords = ra_dec)
-
-    # Parallax settings:
-    model_planet_parallax = Model({**params, **params_pi_E, **params_planet}, coords = ra_dec) # again for single lens
-    model_planet_parallax.parallax(earth_orbital = False, satellite = True)
-
-    # necessary path to ephemeris of the observatory (must for parallax)
-    MODULE_PATH = '/Users/ldang/Desktop/spitzer-ulens-tozip-20-01-29/MulensModel'
-    satellite = SatelliteSkyCoord(os.path.join(MODULE_PATH, 'data/ephemeris_files', 'Spitzer_ephemeris_02.dat'))
-
-    # defining the binary lens calculation 
-    model_planet.set_magnification_methods([np.min(t_gro), 'VBBL', np.max(t_gro)])
-    model_planet_parallax.set_magnification_methods([np.min(t_gro), 'VBBL', np.max(t_gro)])
-
-    # get magnification
-    mag_gro = model_planet_parallax.magnification(time=t_gro)
-
-    # get flux light curve
-    flux_gro = fb_gro + mag_gro*fs_gro
-    return flux_gro
-
-def binary_lens_flux_par_sat(t_sat, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E, fb_sat, fs_sat, coord):
-    """Uses Mulens to generate binary lens Spitzer lightcurve with microlens parallax.
-
-    """
-    # Define model parameters .
-    params = {'t_0': t0, 'u_0': u0, 't_E': tE}
-    params_pi_E = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
-    ra_dec = coord
-    params_planet = {'rho': rho, 's': s, 'q': q, 'alpha': -np.rad2deg(alpha)}
-
-    # Set models and satellite settings
-    model_planet = Model({**params, **params_planet}, coords = ra_dec)
-
-    # Parallax settings:
-    model_planet_parallax = Model({**params, **params_pi_E, **params_planet}, coords = ra_dec) # again for single lens
-    model_planet_parallax.parallax(earth_orbital = False, satellite = True)
-
-    # necessary path to ephemeris of the observatory (must for parallax)
-    MODULE_PATH = '/Users/ldang/Desktop/spitzer-ulens-tozip-20-01-29/MulensModel'
-    satellite = SatelliteSkyCoord(os.path.join(MODULE_PATH, 'data/ephemeris_files', 'Spitzer_ephemeris_02.dat'))
-
-    # defining the binary lens calculation 
-    #model_planet.set_magnification_methods([np.min(t_gro), 'VBBL', np.max(t_gro)])
-    model_planet_parallax.set_magnification_methods([np.min(t_sat), 'VBBL', np.max(t_sat)])
-
-    # get magnification
-    mag_sat = model_planet_parallax.magnification(t_sat, satellite_skycoord=satellite.get_satellite_coords(t_sat))
-
-    # get flux light curve
-    flux_sat = fb_sat + mag_sat*fs_sat
-    return flux_sat
-
-
-def binary_lens_mag_par_both(time_g, time_s, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E, coord):
-    """Uses Mulens to generate Spitzer Parallax lightcurves.
-    
-    Args:
-        t (1D array): time array
-        s (float): separation between the two lenses in units of total angular Einstein radii
-        q (float): mass ratio: mass of the lens on the right divided by mass of the lens on the left
-        rho (float): source radius in Einstein radii of the total mass (if not a point-source)
-        alpha (float): angle between lens axis and source trajectory (in rad)
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
-        pi_E_N (float): N-S microlens parallax 
-        pi_E_E (float): E-W microlens parallax
-        coord (string): target's coordinate in the following format 'hh:mm:ss.ss dd:mm:ss.ss'
-    """
-
-    # Define model parameters (PSPL, parallax, target coordinates, planet params)
-    params        = {'t_0': t0, 'u_0': u0, 't_E': tE}
-    params_pi_E   = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
-    ra_dec        = coord
-    params_planet = {'rho': rho, 's': s, 'q': q, 'alpha': alpha}
-
-    # Set models and satellite settings .
-    model_planet = Model({**params, **params_planet}, coords = ra_dec)
-
-    # Parallax settings:
-    model_planet_parallax = Model({**params, **params_pi_E, **params_planet}, coords = ra_dec) # again for single lens
-    model_planet_parallax.parallax(earth_orbital = False, satellite = True)
-
-    # necessary path to ephemeris of the observatory (must for parallax)
-    MODULE_PATH = '/Users/ldang/Desktop/spitzer-ulens-tozip-20-01-29/MulensModel'
-    satellite = SatelliteSkyCoord(os.path.join(MODULE_PATH, 'data/ephemeris_files', 'Spitzer_ephemeris_02.dat'))
-
-    # Calculate finite source magnification using VBBL method for this
-    tmin = np.min([np.min(time_g), np.min(time_s)])
-    tmax = np.max([np.max(time_g), np.max(time_s)])
-
-    # range of dates :
-    model_planet.set_magnification_methods([tmin, 'VBBL', tmax])
-    model_planet_parallax.set_magnification_methods ([tmin, 'VBBL', tmax])
-
-    # get magnification curve
-    mag_gro = model_planet_parallax.magnification(time=time_g)
-    mag_sat = model_planet_parallax.magnification(time=time_s, satellite_skycoord=satellite.get_satellite_coords(time_s))
-
-    return mag_gro, mag_sat
-
-def binary_lens_flux_par_both(time_g, time_s, s, q, rho, alpha, tE, t0, u0, pi_E_N, pi_E_E, fb_g, fs_g, fb_s, fs_s, coord):
-    """Uses Mulens to generate Spitzer Parallax lightcurves.
-    
-    Args:
-        t (1D array): time array
-        s (float): separation between the two lenses in units of total angular Einstein radii
-        q (float): mass ratio: mass of the lens on the right divided by mass of the lens on the left
-        rho (float): source radius in Einstein radii of the total mass (if not a point-source)
-        alpha (float): angle between lens axis and source trajectory (in rad)
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
-        pi_E_N (float): N-S microlens parallax 
-        pi_E_E (float): E-W microlens parallax
-        coord (string): target's coordinate in the following format 'hh:mm:ss.ss dd:mm:ss.ss'
-    """
-
-    # Define model parameters (PSPL, parallax, target coordinates, planet params)
-    params        = {'t_0': t0, 'u_0': u0, 't_E': tE}
-    params_pi_E   = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
-    ra_dec        = coord
-    params_planet = {'rho': rho, 's': s, 'q': q, 'alpha': alpha}
-
-    # Set models and satellite settings .
-    model_planet = Model({**params, **params_planet}, coords = ra_dec)
-
-    # Parallax settings:
-    model_planet_parallax = Model({**params, **params_pi_E, **params_planet}, coords = ra_dec) # again for single lens
-    model_planet_parallax.parallax(earth_orbital = False, satellite = True)
-
-    # necessary path to ephemeris of the observatory (must for parallax)
-    MODULE_PATH = '/Users/ldang/Desktop/spitzer-ulens-tozip-20-01-29/MulensModel'
-    satellite = SatelliteSkyCoord(os.path.join(MODULE_PATH, 'data/ephemeris_files', 'Spitzer_ephemeris_02.dat'))
-
-    # Calculate finite source magnification using VBBL method for this
-    tmin = np.min([np.min(time_g), np.min(time_s)])
-    tmax = np.max([np.max(time_g), np.max(time_s)])
-
-    # range of dates :
-    model_planet.set_magnification_methods([tmin, 'VBBL', tmax])
-    model_planet_parallax.set_magnification_methods ([tmin, 'VBBL', tmax])
-
-    # get magnification curve
-    mag_gro = model_planet_parallax.magnification(time=time_g)
-    mag_sat = model_planet_parallax.magnification(time=time_s, satellite_skycoord=satellite.get_satellite_coords(time_s))
-
-    # get flux light curve
-    flux_gro = fb_g + mag_gro*fs_g
-    flux_sat = fb_s + mag_sat*fs_s
-
-    return flux_gro, flux_sat
-
-def single_lens_mag_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, coord):
-    """Uses Mulens to generate Spitzer Parallax lightcurves.
-    
-    Args:
-        t (1D array): time array
-        s (float): separation between the two lenses in units of total angular Einstein radii
-        q (float): mass ratio: mass of the lens on the right divided by mass of the lens on the left
-        rho (float): source radius in Einstein radii of the total mass (if not a point-source)
-        alpha (float): angle between lens axis and source trajectory (in rad)
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
-        pi_E_N (float): N-S microlens parallax 
-        pi_E_E (float): E-W microlens parallax
-        coord (string): target's coordinate in the following format 'hh:mm:ss.ss dd:mm:ss.ss'
-    """
-
-    # Define model parameters (PSPL, parallax, target coordinates, planet params)
-    params        = {'t_0': t0, 'u_0': u0, 't_E': tE}
-    params_pi_E   = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
-    ra_dec        = coord
-
-    # Set models and satellite settings .
-    model = Model({**params}, coords = ra_dec)
-
-    # Parallax settings:
-    model_parallax = Model({**params, **params_pi_E}, coords = ra_dec) 
-    model_parallax.parallax(earth_orbital = False, satellite = True)
-
-    # necessary path to ephemeris of the observatory (must for parallax)
-    satellite = SatelliteSkyCoord('data/ob171140/spitzer/Spitzer_ephemeris_02.dat')
-
-    # get magnification curve
-    mag_gro = model_parallax.magnification(time=time_g)
-    mag_sat = model_parallax.magnification(time=time_s, satellite_skycoord=satellite.get_satellite_coords(time_s))
-
-    return mag_gro, mag_sat
-
-def single_lens_flux_par_both(time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, fb_g, fs_g, fb_s, fs_s, coord):
-    """Uses Mulens to generate Spitzer Parallax lightcurves.
-    
-    Args:
-        tE (float): Einstein radius crossing time
-        t0 (float): time of peak magnification
-        u0 (float): impact parameter
-        pi_E_N (float): N-S microlens parallax 
-        pi_E_E (float): E-W microlens parallax
-        coord (string): target's coordinate in the following format 'hh:mm:ss.ss dd:mm:ss.ss'
-    """
-
-    # Define model parameters (PSPL, parallax, target coordinates, planet params)
-    params        = {'t_0': t0, 'u_0': u0, 't_E': tE}
-    params_pi_E   = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
-    ra_dec        = coord
-
-    # Set models and satellite settings .
-    model = Model({**params}, coords = ra_dec)
-
-    # Parallax settings:
-    model_parallax = Model({**params, **params_pi_E}, coords = ra_dec) 
-    model_parallax.parallax(earth_orbital = False, satellite = True)
-
-    # necessary path to ephemeris of the observatory (must for parallax)
-    MODULE_PATH = '/Users/ldang/Desktop/spitzer-ulens-tozip-20-01-29/MulensModel'
-    satellite = SatelliteSkyCoord(os.path.join(MODULE_PATH, 'data/ephemeris_files', 'Spitzer_ephemeris_02.dat'))
-
-    # get magnification curve
-    mag_gro = model_parallax.magnification(time=time_g)
-    mag_sat = model_parallax.magnification(time=time_s, satellite_skycoord=satellite.get_satellite_coords(time_s))
-
-    # get flux light curve
-    flux_gro = fb_g + mag_gro*fs_g
-    flux_sat = fb_s + mag_sat*fs_s
-
-    return flux_gro, flux_sat
-
+    def func(self,time,fb,t0,fs,tE):
+        ts = (time-t0)/(tE/np.sqrt(12))
+        flux = fb+fs/(np.sqrt(ts**2 +1))
+        return flux

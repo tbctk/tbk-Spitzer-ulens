@@ -1,6 +1,13 @@
-import numpy as np
+"""This module contains the PLDEventData which is used for extracting and formatting data for 
+use with PLD.
+
+
+"""
+
 import os
+import re
 import pickle
+import numpy as np
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -9,275 +16,179 @@ from astropy.wcs.utils import skycoord_to_pixel
 from astropy import units as u
 from astropy.coordinates import Angle
 
-def make_path(dst_dir):
-    """
-    Creates path of specified directory if it does not already exist
+class PLDEventData(object):
+    """The PLDEventData class is used to extract and format Spitzer data for use with PLD.
     
-    Args:
-        dst_dir (str): Path to create.
+    A PLDEventData object is initialized with the coordinates of the event and a string 
+    specifying a path to the source directory for the data. The resulting object will store 
+    the (5-by-5, or custom size given by the 'box' parameter) images, in the vicinity of 
+    the event coordinates. OGLE data can be added as well, and the flux, errors, etc. can 
+    all be obtained.
+    
+    Attributes:
+        cbcd_pattern: String representing a regex pattern for CBCD of the desired format.
+        src: List of string source directory paths linked to this PLDEventData object.
+        coords: Tuple of strings (ra,dec), containing the RA and declination of the event, 
+            where ra is in the format 'hh:mm:ss.ss' and dec in the format 'dd:mm:ss.ss'.
+        channel: Integer Spitzer IRAC channel to use, defaults to 1 (3.6 microns).
+        time: List of times corresponding to each image, separated by dither position.
+        img: List of cropped CBCD, separated by dither position.
+        img_err: List of cropped CBUNC, separated by dither position.
+        t_g: Ground-based time-series data.
+        mag_g: Ground-based magnification data.
+        mag_err_g: Ground-based magnification error data.
+        flux_g: Calculated ground-based flux data.
+        flux_err_g: Calculated ground-based flux error data.
+        ndit: Integer number of dither positions for the Spitzer data.
+        box: Integer width & height of the images, defaults to 5.
     """
-    pathlist = os.path.normpath(dst_dir).split(os.path.sep)
-    path = ''
-    for d in pathlist:
-        path = os.path.join(path,d)
-        if os.path.isfile(path):
-            raise Exception("Destination path points to a file")
-        elif os.path.isdir(path):
-            continue
+    
+    def __init__(self,src,coords,channel=1,recursive=False,box=5):
+        if box%2 == 0:
+            raise Exception("Parameter 'box' must be an odd integer.")
+        
+        # Setting attributes
+        self.cbcd_pattern = '^SPITZER_I%i_[0-9]{6,10}_[0-9]{3}[1-9]_0000_[1-2]_cbcd.fits$'%channel
+        #self.cbunc_pattern = '^SPITZER_I%i_[0-9]{6,10}_[0-9]{3}[1-9]_0000_1_cbunc.fits$'%channel
+        self.src = [src]
+        self.coords = coords
+        self.channel = channel
+        self.time = []
+        self.img = []
+        self.img_err = []
+        self.t_g = None
+        self.mag_g = None
+        self.mag_err_g = None
+        self.flux_g = None
+        self.flux_err_g = None
+        self.ndit = 0
+        self.box = box
+        
+        # Search src directory for fits files
+        if recursive:
+            centroid_data = self.extract_centroid_data_recursive(src)
         else:
-            os.mkdir(path)
-    return
-
-def move_fits_files_rec(src_dir,dst_dir):
-    """
-    Recursively searches directory structure for FITS files and puts them in a single data folder
-    
-    Args:
-        src_dir (str): Path to folder in which to search for FITS files.
-        dst_dir (str): Path to folder where you wish to store the FITS files.
-    """
-    data = []
-    for f in os.listdir(src_dir):
-        src = os.path.join(src_dir,f)
-        dst = os.path.join(dst_dir,f)
-        if os.path.isfile(src):
-            if src.endswith('_cbcd.fits') or src.endswith('_cbunc.fits'):
-                os.rename(src,dst)
-        elif os.path.isdir(src):
-            move_fits_files_rec(src,dst_dir)
-    return
-
-def directory_config(evt,telescope,src_dir,rd=""):
-    """
-    Create directory structure for use with PLD-ulens. Working directory must contain your python project that uses PLD-ulens, otherwise you must specify the project's working directory with the 'wd' input.
-    
-    Args:
-        evt (str): Name of the event, e.g. 'ob171140' for OGLE-2017-BLG-1140.
-        telescope (str): Name of the telescope, e.g. 'spitzer'.
-        src_dir (str): Path to folder in which to search for FITS files.
-        rd (str, optional): Destination root project directory. Defaults to current working directory
-    """
-
-    dst_dir = os.path.join(rd,'data',evt,telescope,'images')
-
-    make_path(dst_dir)
-    move_fits_files_rec(src_dir,dst_dir)
-
-    # Make input folder for PLD_Decorrelation
-    dst_dir2 = os.path.join(rd,'data',evt,'PLD_input')
-    make_path(dst_dir2)
-    return
-
-def get_centroid_data_from_file(filepath,event_coords,origin=1):
-    """ 
-    Obtains centroid information from a given file path
-    
-    Args:
-        filepath (str): FITS file path
-        event_coords (tuple of str): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
-        origin (int, optional): Indexing of the top-left pixel. Defaults to 1.
-    
-    Returns:
-        label (str): Unique label of this image
-        time (float): Time of image taken in Reduced Helioc. Mod. Julian Date (may need to change this)
-        xp (float): Pixel x-coordinate of event
-        yp (float): Pixel y-coordinate of event
-        fname (str): File name, excluding path
-        expid (int): The exposure ID, which tells us which dither position this image is from.
-    """
-    hdu_list = fits.open(filepath)
-    myheader = hdu_list[0].header
-    hdu_list.close()
-    
-    aorkey = myheader['AORKEY'] # AOR key of this image
-    expid = myheader['EXPID'] # Get the dither number (exposure id)
-    label = str(aorkey)
-    
-    time = myheader['BMJD_OBS']-5e4 # Time of image in Reduced Helioc. Mod. Julian Date (may need to change this)
-    
-    w = WCS(myheader)
-    ra = Angle(event_coords[0],unit='hourangle')
-    dec = Angle(event_coords[1],unit='deg')
-    coords = SkyCoord(ra,dec)
-    (xp,yp) = skycoord_to_pixel(coords,w,mode='wcs',origin=origin) # Convert to pixel coordinates
-    
-    _,fname = os.path.split(filepath)
-    
-    return label,time,xp,yp,fname,expid
-
-def read_centroid_data(dirpath,event_coords,timerange=None,**kwargs):
-    """
-    Reads each corrected BCD (CBCD) file in the provided data root directory.    
-    Args:
-        dirpath (str): Path to data root directory
-        event_coords (tuple of str): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
-        timerange (float, optional): Time range to use
-        **kwargs: Optional labeled parameters
-    
-    Returns:
-        data (ndarray of str): 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
-    """
-    data = []
-    for filename in os.listdir(dirpath):
-        if filename.startswith('SPITZER_I1_') and filename.endswith('_cbcd.fits') and not filename.endswith('0_0000_1_cbcd.fits'):
-            label,time,xp,yp,fname,expid = get_centroid_data_from_file(os.path.join(dirpath,filename),event_coords,**kwargs)
-            if (timerange is None) or (time > timerange[0] and time < timerange[1]):
-                data.append(np.asarray([label,time,xp,yp,fname,expid]))
-    return np.asarray(data)
-
-def generate_centroid_file(dirpath,event_coords,destpath='',**kwargs):
-    """
-    Reads each corrected BCD (CBCD) file in the provided data root directory and writes the output data to output file destpath/centroid.out. The directory structure must be as downloaded from ipac website: dirpath/xxxxx/ch1/bcd/file_name_cbcd.fits
-    
-    Args:
-        dirpath (str): path to data root directory
-        event_coords (tuple of str): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
-        destpath (str, optional): Destination directory for centroid.out output file
-        **kwargs: Optional labeled parameters
+            centroid_data = self.extract_centroid_data(src)
+        if len(centroid_data) > 0:
+            # Separate into dithers and get images
+            expids = np.array(centroid_data)[:,1]
+            dithers = np.unique(expids)
+            self.ndit = len(dithers)
+            arrs = np.array(list(map(list,zip(*centroid_data))))
+            for i in dithers:
+                ind = np.array(expids)==i
+                dithered = arrs[:,ind]
+                aorkey,expid,time,xp,yp,cbcd_filepath,cbunc_filepath = dithered
+                xp = np.array(xp,dtype=float)
+                yp = np.array(yp,dtype=float)
+                time = np.array(time,dtype=float)
+                x0 = round(np.median(xp)-1)
+                y0 = round(np.median(yp)-1)
+                img = np.empty((len(aorkey),box,box))
+                img_err = np.empty((len(aorkey),box,box))
+                for i,k in enumerate(aorkey):
+                    img[i] = self.target_image_square(cbcd_filepath[i],x0,y0,box=box)
+                    img_err[i] = self.target_image_square(cbunc_filepath[i],x0,y0,box=box)
+                self.time.append(time)
+                self.img.append(img)
+                self.img_err.append(img_err)
         
-    Returns:
-        centroid_data_array (ndarray of str): 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
-    """
-    data = read_centroid_data(dirpath,event_coords,**kwargs)
-    ind = np.argsort(data[:,1]) # Sort data chronologically
-    centroid_data_array = data[ind]
-    np.savetxt(os.path.join(destpath,'centroid.out'),centroid_data_array,fmt='%s',delimiter=' ')
-    return centroid_data_array
-
-def get_centroid_data(evt,telescope,evt_coords,**kwargs):
-    """
-    Gets centroid data for the given event, telescope, and coordinates.
-    
-    Args:
-        evt (str): Abridged name of the event (e.g. 'ob171140' for 'OGLE-2017-BLG-1140')
-        telescope (str): Name of the telescope (e.g. 'spitzer')
-        evt_coords (tuple of str): (ra,dec) where ra='hh:mm:ss.ss' and dec='dd:mm:ss.ss'
-        **kwargs: Optional labeled parameters
+    @staticmethod
+    def target_image_square(filepath,xp,yp,box=5):
+        hdu_list = fits.open(filepath)
+        full_img = hdu_list[0].data
+        hdu_list.close()
         
-    Returns:
-        centroid_data_array (ndarray of str): 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
-    """
-    dirpath = 'data/'+evt+'/'+telescope+'/images'
-    destpath = 'data/'+evt+'/'+telescope
-    data = generate_centroid_file(dirpath,evt_coords,destpath,**kwargs)
-    return divide_per_dither(data)
-
-def load_centroid_data(evt,telescope):
-    """
-    Load centroid data from file for a given event and telescope
-    
-    Args:
-        evt (str): Abridged name of the event (e.g. 'ob171140' for 'OGLE-2017-BLG-1140')
-        telescope (str): Name of the telescope (e.g. 'spitzer')
-        
-    Returns:
-        centroid_data_array (ndarray of str): 4 x n array, where each row contains [label,time,xp,yp] and n is the number of FITS images
-    """
-    filename = 'data/'+evt+'/'+telescope+'/centroid.out'
-    data = np.loadtxt(filename,dtype=str)
-    return divide_per_dither(data)
-
-def divide_per_dither(centroid_data):
-    """
-    Divides centroid data into separate arrays for each dither.
-    
-    Args:
-        centroid_data (ndarray): Centroid data, formatted as per output from load_centroid_data() or get_centroid_data().
-        
-    Returns:
-        AORs (ndarray of str): AOR identifier keys
-        times (ndarray of float): Times
-        xps (ndarray of float): x-pixel coordinates
-        yps (ndarray of float): y-pixel coordinates
-        cbcd (ndarray of str): Names of CBCD files
-        cbunc (ndarray of str): Names of CBUNC files
-    """
-    dithers = np.unique(centroid_data[:,5])
-    print(dithers)
-    data_dit = []
-    for i in dithers:
-        data_dit.append(centroid_data[centroid_data[:,5] == i])
-    data_dit = np.array(data_dit,dtype=object)
-    AORs = data_dit[:,:,0]
-    times = data_dit[:,:,1].astype(np.float)
-    xps = data_dit[:,:,2].astype(np.float)
-    yps = data_dit[:,:,3].astype(np.float)
-    cbcd = data_dit[:,:,4]
-    
-    cbunc = []
-    for dither in cbcd:
-        cbunc.append([name[:-9]+'cbunc.fits' for name in dither])
-    return AORs,times,xps,yps,cbcd,np.asarray(cbunc)
-
-def target_central_px(XDATA, YDATA):
-    """Get the target's central pixel coordinates for each dither. We need to get the flux from the SAME pixels for pixel level decorrelation.
-    
-    Args:
-        XDATA (list): list that contains nb_dithers arrays of x-centroid obtained from astrometry (xread outputs)
-        YDATA (list): list that contains nb_dithers arrays of y-centroid obtained from astrometry (xread outputs)
-        
-    Returns:
-        xcent (list of int): x-coordinate of central pixel
-        array (list of int): y-coordinate or central pixel
-    """
-    # number of dithers
-    nb_dithers = len(XDATA)
-
-    # get x-coordinate of central pixel (unsure if floor or round is the way to go)
-    xmed = []
-    for i in range(nb_dithers):
-        xmed.append(np.median(XDATA[i]))
-    xcent = np.round(np.array(xmed) - 1)
-
-    # get y-coordinate of central pixel (unsure if floor or round is the way to go)
-    ymed = []
-    for i in range(nb_dithers):
-        ymed.append(np.median(YDATA[i]))
-    ycent = np.round(np.array(ymed) - 1)
-
-    return xcent, ycent
-
-def target_image_square(evt, xcent, ycent, CBCD, CBUNC, box=5):
-    """Using the central pixel coordinate for each dither, this function will return only the box of enclosing the target of interest.
-    
-    Args:
-        evt (str): event name in the format obYYXXXX.
-        xcent (1D array): x-coordinate of central pixel
-        ycent (1D array): y-coordinate of central pixel
-        CBCD (list) : list of arrays of cbcd fits file names for each dither position
-        CBUNC (list): list of arrays of cbunc fits file names for each dither position
-        box (int): size of the box of interest. Default value is 5.
-        
-    Returns:
-        image (list): list of 3D-array (image flux stacks) per dither positions
-        image_err (list): list of 3D-array (image uncertainty stacks) per dither positions
-    """
-    nb_dithers = len(xcent)
-    # create list where the images stacks for each dithers will be stored
-    image      = []
-    image_err  = []
-    # for each dither positions
-    for j in range(nb_dithers):
-        # get delimitation of PLD box
         half = int((box-1)/2)
-        xbeg = int(xcent[j] - half)
-        ybeg = int(ycent[j] - half)
-        xend = xbeg + box
-        yend = ybeg + box
-        # create empty array where image stack for each dither will be stored
-        img_tmp     = np.empty((len(CBCD[j]), box, box))
-        img_tmp_err = np.empty((len(CBUNC[j]), box, box))
-        # for each images with dither position j
-        for i in range(len(CBCD[j])):
-            path     = 'data/'+evt+'/spitzer/images/'+ CBCD[j][i]
-            path_err = 'data/'+evt+'/spitzer/images/'+ CBUNC[j][i]
-            # open cbcd and cbunc fits file
-            hdu      = fits.open(path)
-            hdu_err  = fits.open(path_err)
-            # record the box of pixels we want
-            img_tmp[i]     = hdu[0].data[ybeg:yend, xbeg:xend]
-            img_tmp_err[i] = hdu_err[0].data[ybeg:yend, xbeg:xend]
+        xmin = xp-half
+        ymin = yp-half
+        xmax = xmin+box
+        ymax = ymin+box
+        
+        return full_img[ymin:ymax,xmin:xmax]
+    
+    @staticmethod
+    def read_fits_file(cbcd_filepath,coords,origin=1,short_output=False):
+        # Open fits file and obtain header
+        hdu_list = fits.open(cbcd_filepath)
+        header = hdu_list[0].header
+        hdu_list.close()
+        # Extract the data we need
+        aorkey = header['AORKEY'] # AOR key of this image
+        expid = int(header['EXPID']) # Get the dither number (exposure id)
 
-        image.append(img_tmp)
-        image_err.append(img_tmp_err)
-    return image, image_err
+        time = float(header['BMJD_OBS']-5e4) # Time of image in Reduced Helioc. Mod. Julian Date (may need to change this)
+
+        w = WCS(header)
+        ra = Angle(coords[0],unit='hourangle')
+        dec = Angle(coords[1],unit='deg')
+        coords = SkyCoord(ra,dec)
+        (xp,yp) = skycoord_to_pixel(coords,w,mode='wcs',origin=origin) # Convert to pixel coordinates
+        
+        cbunc_filepath = cbcd_filepath[:-9]+'cbunc.fits'
+        
+        return aorkey,expid,time,xp,yp,cbcd_filepath,cbunc_filepath
+    
+    def extract_centroid_data_recursive(self,src):
+        centroid_data = []
+        def rec(src):
+            # Inner recursive function to search the file tree and extract data
+            for fname in os.listdir(src):
+                path = os.path.join(src,fname)
+                if os.path.isdir(path):
+                    # Recursively search subdirectories
+                    rec(path)
+                else:
+
+                    if re.match(self.cbcd_pattern,fname,re.I):
+                        # Get centroid data
+                        centroid_data.append(list(self.read_fits_file(path,self.coords)))
+        rec(src)
+        return centroid_data
+    
+    def extract_centroid_data(self,src):
+        centroid_data = []
+        for fname in os.listdir(src):
+            path = os.path.join(src,fname)
+            if os.path.isfile(path):
+                if re.match(self.cbcd_pattern,fname,re.I):
+                    # Get flux data from CBCD
+                    centroid_data.append(self.read_fits_file(path,self.coords))
+        return centroid_data
+    
+    def add_OGLE_data(self,datafile,subtract_2450000=True):
+        time,mag,mag_err,_,_ = np.loadtxt(datafile).T
+        self.src.append(datafile)
+        if subtract_2450000:
+            time -= 2450000
+        
+        self.t_g = time
+        self.mag_g = mag
+        self.mag_err_g = mag_err
+        self.flux_g = 10**(-(mag-18)/2.5)
+        self.flux_err_g = np.sqrt((10**(-(mag-18)/2.5)*(-0.4)*np.log(10))**2*mag_err**2)
+        
+    def save(self,filepath='pld_event_data.pkl',overwrite=False):
+        if os.path.exists(filepath) and not overwrite:
+            raise Exception('Path %s already points to a file.'%filepath)
+        else:
+            with open(filepath,'wb') as output:
+                pickle.dump(self,output,pickle.HIGHEST_PROTOCOL)
+    
+    @classmethod
+    def from_pickle(filepath):
+        with open(filepath, 'rb') as file:
+            event = pickle.load(file)
+            
+    def aperture_photometry(self):
+        flux = []
+        flux_err = []
+        flux_frac = []
+        for i,img in enumerate(self.img):
+            tmp = np.sum(img,axis=(1,2))
+            flux.append(tmp)
+            flux_err.append(np.sum(self.img_err[i],axis=(1,2)))
+            flux_frac.append(img/tmp[:,None,None])
+        flux_med = np.median(flux,axis=0)
+        flux_scatter = np.std(flux - flux_med)
+        return np.array(flux),np.array(flux_err),np.array(flux_frac),np.array(flux_scatter)

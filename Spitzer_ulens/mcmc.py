@@ -1,29 +1,9 @@
 import emcee
 import numpy as np
 from . import PLD
-from . import models
 import time as ti
 from tqdm import tqdm
 import os
-
-class PLDCoeffsChain(object):
-    """
-    Wrapper class for a chain of PLD coefficients, to make it mutable.
-    
-    Attributes:
-        chain: An array containing the PLD coefficient chain, which will expand over the course of the MCMC.
-    """
-    def __init__(self,coeffs):
-        self.chain = [np.asarray(coeffs)]
-    
-    def update_chain(self,coeffs):
-        """
-        Updates the chain to include the latest set of PLD coefficients.
-        
-        Args:
-            coeffs (list of float): List of PLD coefficients to be appended to this chain.
-        """
-        self.chain = np.concatenate((self.chain,[np.asarray(coeffs)]))
 
 def get_MCMC_sampler(p0,modelfunc,TIMES,PTOT,PTOT_E,E_BIN,PNORM,PLD_chain,pool=None,nwalkers=100,bounds=None):
     """
