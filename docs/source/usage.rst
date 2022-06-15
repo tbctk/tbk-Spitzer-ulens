@@ -21,7 +21,7 @@ This package is designed to work with data as downloaded from the `OGLE Early Wa
 Data Configuration
 ------------------
 
-The ``data_config`` module contains tools to configure the raw data you have downloaded for use with the Spitzer-ulens package. To start, 
+The ``data_config`` module contains tools to configure the raw data you have downloaded for use with the Spitzer-ulens package. To start, you will want to create a PLDEventData object for the event you have selected. To create a PLDEventData object, you need to specify the directory where the data is stored, as well as the coordinates of the event. You may additionally wish to 
 
 ::
 

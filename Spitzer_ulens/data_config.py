@@ -44,6 +44,10 @@ class PLDEventData(object):
     """
     
     def __init__(self,src,coords,channel=1,recursive=False,box=5):
+        """
+        
+        """
+        
         if box%2 == 0:
             raise Exception("Parameter 'box' must be an odd integer.")
         
