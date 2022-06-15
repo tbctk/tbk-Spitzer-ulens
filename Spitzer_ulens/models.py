@@ -61,6 +61,45 @@ class LCModel(ABC):
     def mag2flux(mag,fb,fs):
         return mag*fs+fb
     
+    def lnprior(self,pars,bounds):
+        if bounds is None:
+            return 0
+        else:
+            if all(pars>bounds[0]) and all(pars<bounds[1]):
+                return 0.0
+            else: 
+                return -np.inf
+
+    def lnlike(self,pars,time,flux,flux_err,flux_frac,flux_scatter):
+        # solving for PLD coefficients analytically
+        Y, Astro, Ps, A, C, E, X = PLD.analytic_solution(time,flux,flux_err,flux_frac,pars,self)
+
+        # Generating time series from bestfit params
+        fit,sys,corr,resi = PLD.get_bestfit(A, Ps, X, flux, Astro)
+        Ndat = len(flux[0])
+
+        like = 0
+        # generating model and calculating the difference with the flux
+        for i in range(len(time)):
+            # diff (don't forget ravel, otherwise you'll have some matrix operation!)
+            diff  = flux[i]-fit[i].ravel()
+            diff2 = flux[i]-Astro[i].ravel()
+            # likelihood = -0.5*chisq
+            inerr = 1/flux_err[i]
+            inerr2 = 1/flux_scatter
+            like  += -0.5*np.sum(diff**2*inerr**2) + np.sum(np.log(inerr)) - Ndat*0.9189385332046727
+            like  += -0.5*np.sum(diff2**2*inerr2**2) + Ndat*np.log(inerr2) - Ndat*0.9189385332046727
+        return like
+
+    def lnprob(self,pars,bounds,time,flux,flux_err,flux_frac,flux_scatter):
+        # get lnprior
+        lp = self.lnprior(pars,bounds)
+        # if guess is out of bound
+        if not np.isfinite(lp):
+            return -np.inf
+        # calculate posterior
+        return lp + self.lnlike(pars,time,flux,flux_err,flux_frac,flux_scatter)
+    
 class SingleLensParallaxModel(LCModel):
     
     def __init__(self,coords,ephemeris_file_path):
@@ -136,7 +175,7 @@ class SingleLensParallaxModel(LCModel):
 
 class SingleLensModel(LCModel):
     
-    def func(self,time,fb,t0,fs,tE):
+    def func(self,time,tE,t0,fb,fs):
         ts = (time-t0)/(tE/np.sqrt(12))
         flux = fb+fs/(np.sqrt(ts**2 +1))
         return flux

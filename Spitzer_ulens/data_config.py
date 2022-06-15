@@ -60,6 +60,10 @@ class PLDEventData(object):
         self.time = []
         self.img = []
         self.img_err = []
+        self.flux_s = None
+        self.flux_err_s = None
+        self.flux_frac = None
+        self.flux_scatter = None
         self.t_g = None
         self.mag_g = None
         self.mag_err_g = None
@@ -96,6 +100,10 @@ class PLDEventData(object):
                 self.time.append(time)
                 self.img.append(img)
                 self.img_err.append(img_err)
+        try:
+            self.flux_s,self.flux_err_s,self.flux_frac,self.flux_scatter = self.aperture_photometry()
+        except:
+            pass
         
     @staticmethod
     def target_image_square(filepath,xp,yp,box=5):
@@ -143,7 +151,6 @@ class PLDEventData(object):
                     # Recursively search subdirectories
                     rec(path)
                 else:
-
                     if re.match(self.cbcd_pattern,fname,re.I):
                         # Get centroid data
                         centroid_data.append(list(self.read_fits_file(path,self.coords)))
@@ -185,14 +192,20 @@ class PLDEventData(object):
             event = pickle.load(file)
             
     def aperture_photometry(self):
-        flux = []
-        flux_err = []
-        flux_frac = []
-        for i,img in enumerate(self.img):
-            tmp = np.sum(img,axis=(1,2))
-            flux.append(tmp)
-            flux_err.append(np.sum(self.img_err[i],axis=(1,2)))
-            flux_frac.append(img/tmp[:,None,None])
-        flux_med = np.median(flux,axis=0)
-        flux_scatter = np.std(flux - flux_med)
-        return np.array(flux),np.array(flux_err),np.array(flux_frac),np.array(flux_scatter)
+        if (self.flux_s is not None and 
+                self.flux_err_s is not None and 
+                self.flux_frac is not None and 
+                self.flux_scatter is not None):
+            return self.flux_s,self.flux_err_s,self.flux_frac,self.flux_scatter
+        else:
+            flux = []
+            flux_err = []
+            flux_frac = []
+            for i,img in enumerate(self.img):
+                tmp = np.sum(img,axis=(1,2))
+                flux.append(tmp)
+                flux_err.append(np.sum(self.img_err[i],axis=(1,2)))
+                flux_frac.append(img/tmp[:,None,None])
+            flux_med = np.median(flux,axis=0)
+            flux_scatter = np.std(flux - flux_med)
+            return np.array(flux),np.array(flux_err),np.array(flux_frac),np.array(flux_scatter)
