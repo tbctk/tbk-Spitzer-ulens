@@ -46,6 +46,7 @@ import numpy as np
 from inspect import signature, BoundArguments
 from abc import ABC,abstractmethod
 import MulensModel as mm
+import VBBinaryLensing as vbbl
 from Spitzer_ulens import PLD
 
 class LCModel(ABC):
@@ -99,6 +100,38 @@ class LCModel(ABC):
             return -np.inf
         # calculate posterior
         return lp + self.lnlike(pars,time,flux,flux_err,flux_frac,flux_scatter)
+    
+class SingleLensModel(LCModel):
+    
+    def func(self,time,tE,t0,fb,fs):
+        ts = (time-t0)/(tE/np.sqrt(12))
+        flux = fb+fs/(np.sqrt(ts**2 +1))
+        return flux
+    
+class BinaryLensModel(LCModel):
+    
+    VBBL = vbbl.VBBinaryLensing()
+    VBBL.RelTol = 1e-03
+    
+    def func(self,time,tE,t0,fb,fs,s,q,rho,alpha,u0):
+        mag = self.get_mag(time,tE,t0,s,q,rho,alpha,u0)
+        flux = self.mag2flux(mag,fb,fs)
+        return flux
+             
+    def get_mag(self,time,tE,t0,s,q,rho,alpha,u0):
+        # Position of the center of the source with respect to the center of mass.
+        tau = (time - t0)/tE
+        # from Seb. Calchi Novati
+        y1 = u0*np.sin(alpha) - tau*np.cos(alpha)
+        y2 = -u0*np.cos(alpha) - tau*np.sin(alpha)
+
+        # empty array where magnification will be stored
+        mag = np.zeros(len(tau))
+
+        # calculate the magnification at each time
+        params = [np.log(s), np.log(q), u0, alpha, np.log(rho), np.log(tE), t0]
+        mag = self.VBBL.BinaryLightCurve(params, time, y1, y2)
+        return np.array(mag)
     
 class SingleLensParallaxModel(LCModel):
     
@@ -172,10 +205,3 @@ class SingleLensParallaxModel(LCModel):
         inerrg = 1/(l_g*flux_g_err)
         like += -0.5*np.sum(diffg**2*inerrg**2) + np.sum(np.log(inerrg)) - len(diffg)*0.9189385332046727
         return like
-
-class SingleLensModel(LCModel):
-    
-    def func(self,time,tE,t0,fb,fs):
-        ts = (time-t0)/(tE/np.sqrt(12))
-        flux = fb+fs/(np.sqrt(ts**2 +1))
-        return flux
