@@ -50,19 +50,50 @@ import VBBinaryLensing as vbbl
 from Spitzer_ulens import PLD
 
 class LCModel(ABC):
-
+    """Abstract base class representing a callable light-curve model.
+    
+    As an abstract class, an LCModel cannot be instantiated. Users must extend the LCModel
+    class to use its functionalities. All subclasses must overwrite the ``func`` method.
+    """
     def __call__(self,*pars,**kwpars):
         return self.func(*pars,**kwpars)
     
     @abstractmethod
     def func(self,*pars,**kwpars):
+        """The light-curve function itself. Must be overwritten in subclasses.
+        """
         pass
     
     @staticmethod
     def mag2flux(mag,fb,fs):
+        """Converts from magnification to flux.
+        
+        Args:
+            mag (array of float): Array of magnification data.
+            fb (float): Baseline flux.
+            fs (float): Source flux.
+            
+        Returns:
+            Flux data array.
+        """
         return mag*fs+fb
     
     def lnprior(self,pars,bounds):
+        """Simple box likelihood priors for MCMC fitting.
+        
+        Checks whether the given parameters fit within the given bounds. For more complex
+        prior functions, this method can be overwritten in the subclass.
+        
+        Args:
+            pars (array of float): Parameters to check.
+            bounds (tuple of array of float): A tuple of two arrays, each of the same size as
+                ``pars``. The first array represents lower bounds for the parameters, the 
+                second upper bounds.
+        
+        Returns:
+            0 if the parameters all fit within the bounds, negative infinity otherwise.
+            Since this is a log-likelihood, negative infinity represents a zero likelihood.
+        """
         if bounds is None:
             return 0
         else:
@@ -72,6 +103,23 @@ class LCModel(ABC):
                 return -np.inf
 
     def lnlike(self,pars,time,flux,flux_err,flux_frac,flux_scatter):
+        """Computes the log-likelihood for this model to fit the given data.
+        
+        This function provides a simple metric for estimating fit log-likelihoods for non-
+        parallax events. The likelihood function is explained in Dang et al.
+        
+        Pars:
+            pars (array of float): Parameter array to be passed into ``func``.
+            time (array of float): Time data array.
+            flux (array of float): Flux data array.
+            flux_err (array of float): Flux error data array.
+            flux_frac (array of float): Fractional flux data array.
+            flux_scatter (float): Estimate of raw scatter in the flux data.
+        
+        Returns:
+            A float representing an estimate log-likelihood for the model to fit the data,
+            not including priors.
+        """
         # solving for PLD coefficients analytically
         Y, Astro, Ps, A, C, E, X = PLD.analytic_solution(time,flux,flux_err,flux_frac,pars,self)
 
@@ -93,6 +141,24 @@ class LCModel(ABC):
         return like
 
     def lnprob(self,pars,bounds,time,flux,flux_err,flux_frac,flux_scatter):
+        """Computes the full log-likelihood for this model to fit the given data, including priors.
+        
+        Combines the ``lnprior`` and ``lnlike`` functions to provide a full picture of the log-
+        likelihood to be used in an MCMC.
+        
+        Pars:
+            pars (array of float): Parameter array to be passed into ``func``.
+            bounds (tuple of array of float): Parameter bounds to be passed into ``lnprior``.
+            time (array of float): Time data array.
+            flux (array of float): Flux data array.
+            flux_err (array of float): Flux error data array.
+            flux_frac (array of float): Fractional flux data array.
+            flux_scatter (float): Estimate of raw scatter in the flux data.
+        
+        Returns:
+            A float representing an estimate log-likelihood for the model to fit the data,
+            including priors.
+        """
         # get lnprior
         lp = self.lnprior(pars,bounds)
         # if guess is out of bound

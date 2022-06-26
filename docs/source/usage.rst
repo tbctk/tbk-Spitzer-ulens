@@ -35,6 +35,11 @@ The ``data_config`` module contains tools to configure the raw data you have dow
     # Add ground-based data:
     evt.add_OGLE_data('ogle_data.dat')
     
+Model Selection
+---------------
+
+
+    
 
 
 .. `OGLE Early Warning System`_: http://ogle.astrouw.edu.pl/ogle4/ews/ews.html

@@ -1,5 +1,4 @@
-"""This module contains the PLDEventData which is used for extracting and formatting data for 
-use with PLD.
+"""Contains tools for extracting and formatting data for use with PLD.
 
 
 """
@@ -17,7 +16,7 @@ from astropy import units as u
 from astropy.coordinates import Angle
 
 class PLDEventData(object):
-    """The PLDEventData class is used to extract and format Spitzer data for use with PLD.
+    """Used to extract and format Spitzer data for use with PLD.
     
     A PLDEventData object is initialized with the coordinates of the event and a string 
     specifying a path to the source directory for the data. The resulting object will store 
@@ -43,9 +42,22 @@ class PLDEventData(object):
         box: Integer width & height of the images, defaults to 5.
     """
     
-    def __init__(self,src,coords,channel=1,recursive=False,box=5):
-        """
+    def __init__(self,src,coords,channel=1,recursive=False,box=5,subtract_2450000=False,ogle_data=None):
+        """Initializes a PLDEventData object.
         
+        Args:
+            src (str): Path to source folder containing data.
+            coords (tuple of str): The RA and declination of the event, (ra,dec), where 
+                ra is in the format 'hh:mm:ss.ss' and dec in the format 'dd:mm:ss.ss'.
+            channel (int): IRAC channel to use. Select 1 for 3.6 microns, or 2 for 4.5
+                microns. Defaults to 1.
+            recursive (bool): If ``True``, searches subdirectories recursively. Defaults
+                to ``False``.
+            box (int): Pixel width of cropped images. Defaults to 5.
+            subtract_2450000 (bool): If ``True``, subtracts 2450000 from all times.
+                Defaults to ``False``.
+            ogle_data (str): Path to OGLE data file as donwloaded from OGLE Early Warning 
+                System.
         """
         
         if box%2 == 0:
@@ -72,6 +84,8 @@ class PLDEventData(object):
         self.ndit = 0
         self.box = box
         
+        t0 = 0 if subtract_2450000 else 2450000
+        
         # Search src directory for fits files
         if recursive:
             centroid_data = self.extract_centroid_data_recursive(src)
@@ -89,7 +103,7 @@ class PLDEventData(object):
                 aorkey,expid,time,xp,yp,cbcd_filepath,cbunc_filepath = dithered
                 xp = np.array(xp,dtype=float)
                 yp = np.array(yp,dtype=float)
-                time = np.array(time,dtype=float)
+                time = np.array(time,dtype=float)+t0
                 x0 = round(np.median(xp)-1)
                 y0 = round(np.median(yp)-1)
                 img = np.empty((len(aorkey),box,box))
@@ -104,9 +118,23 @@ class PLDEventData(object):
             self.flux_s,self.flux_err_s,self.flux_frac,self.flux_scatter = self.aperture_photometry()
         except:
             pass
+        if ogle_data is not None:
+            self.add_OGLE_data(ogle_data,subtract_2450000=subtract_2450000)
         
     @staticmethod
     def target_image_square(filepath,xp,yp,box=5):
+        """Extract small square centered at event centroid.
+        
+        Takes as input a path to a FITS file along with a pair of x- and y-coordinates
+        and returns a 5-by-5 (or other width specified by ``box``) image centered at
+        these selected coordinates.
+        
+        Args:
+            filepath (str): Path to FITS file.
+            xp (int): Pixel x-coordinate.
+            yp (int): Pixel y-coordinate.
+            box (int): Pixel image width, defaults to 5.
+        """
         hdu_list = fits.open(filepath)
         full_img = hdu_list[0].data
         hdu_list.close()
@@ -120,7 +148,24 @@ class PLDEventData(object):
         return full_img[ymin:ymax,xmin:xmax]
     
     @staticmethod
-    def read_fits_file(cbcd_filepath,coords,origin=1,short_output=False):
+    def read_fits_file(cbcd_filepath,coords,origin=1):
+        """Reads FITS file header to obtain centroid information.
+        
+        Args:
+            cbcd_filepath (str): Path to CBCD FITS file.
+            coords (tuple of str): The RA and declination of the event, (ra,dec), where 
+                ra is in the format 'hh:mm:ss.ss' and dec in the format 'dd:mm:ss.ss'.
+            origin (int): Pixel indexing origin for FITS image, defaults to 1.
+            
+        Returns:
+            aorkey: String representing a unique code the epoch.
+            expid: Integer exposure ID, or the dither position number.
+            time: Float; time that image was taken, in HJD-2450000.
+            xp: Float; exact x-coordinate of event centroid on the image.
+            yp: Float; exact y-coordinate of event centroid on the image.
+            cbcd_filepath: String path to CBCD fits file.
+            cbunc_filepath: String path to corresponding CBUNC FITS error file.
+        """
         # Open fits file and obtain header
         hdu_list = fits.open(cbcd_filepath)
         header = hdu_list[0].header
@@ -142,6 +187,19 @@ class PLDEventData(object):
         return aorkey,expid,time,xp,yp,cbcd_filepath,cbunc_filepath
     
     def extract_centroid_data_recursive(self,src):
+        """Recursively search directory for FITS files and extract centroid data.
+        
+        Performs a depth-first search of the directory structure rooted at src. Calls
+        the ``read_fits_file`` method on every FITS file found that matches the CBCD
+        pattern ``cbcd_pattern``, and returns a list of the results.
+        
+        Args:
+            src (str): Path to root directory for search.
+        
+        Returns:
+            List of tuples (aorkey,expid,time,xp,yp,cbcd_filepath,cbunc_filepath) for
+            each CBCD FITS file found. See ``read_fits_file`` for more information.
+        """
         centroid_data = []
         def rec(src):
             # Inner recursive function to search the file tree and extract data
@@ -158,6 +216,19 @@ class PLDEventData(object):
         return centroid_data
     
     def extract_centroid_data(self,src):
+        """Search directory for FITS files and extract centroid data.
+        
+        Searches ``src`` folder for FITS files. Calls the ``read_fits_file`` method on 
+        every FITS file found that matches the CBCD pattern ``cbcd_pattern``, and returns 
+        a list of the results.
+        
+        Args:
+            src (str): Path to root directory for search.
+        
+        Returns:
+            List of tuples (aorkey,expid,time,xp,yp,cbcd_filepath,cbunc_filepath) for
+            each CBCD FITS file found. See ``read_fits_file`` for more information.
+        """
         centroid_data = []
         for fname in os.listdir(src):
             path = os.path.join(src,fname)
@@ -167,8 +238,19 @@ class PLDEventData(object):
                     centroid_data.append(self.read_fits_file(path,self.coords))
         return centroid_data
     
-    def add_OGLE_data(self,datafile,subtract_2450000=True):
-        time,mag,mag_err,_,_ = np.loadtxt(datafile).T
+    def add_OGLE_data(self,datafile,subtract_2450000=False):
+        """Add ground-based observations to this PLDEventData.
+        
+        Takes in data files formatted as per the data from the OGLE Early Warning System,
+        where the first three columns represent the time, magnification, and error on the
+        magnification.
+        
+        Args:
+            datafile (str): Path to OGLE data file.
+            subtract_2450000 (bool): If ``True``, subtracts 2450000 from all times.
+                Defaults to ``False``.
+        """
+        time,mag,mag_err = np.loadtxt(datafile,usecols=(0,1,2)).T
         self.src.append(datafile)
         if subtract_2450000:
             time -= 2450000
@@ -180,6 +262,14 @@ class PLDEventData(object):
         self.flux_err_g = np.sqrt((10**(-(mag-18)/2.5)*(-0.4)*np.log(10))**2*mag_err**2)
         
     def save(self,filepath='pld_event_data.pkl',overwrite=False):
+        """Saves the PLDEventData instance as a pickle file.
+        
+        Args:
+            filepath (str): Path at which to store the pickled object. Defaults to
+                'pld_event_data.pkl'.
+            overwrite (bool): If ``True``, will overwrite the file path. Otherwise raises
+                an error if the file already exists. Defaults to ``False``.
+        """
         if os.path.exists(filepath) and not overwrite:
             raise Exception('Path %s already points to a file.'%filepath)
         else:
@@ -188,10 +278,33 @@ class PLDEventData(object):
     
     @classmethod
     def from_pickle(filepath):
+        """Loads a PLDEventData from a pickle file.
+        
+        Args:
+            filepath (str): Path from which to load the object.
+        
+        Returns:
+            A PLDEventData instance loaded from the pickle file.
+        """
         with open(filepath, 'rb') as file:
             event = pickle.load(file)
+        if isinstance(event,PLDEventData):
+            return event
+        else:
+            raise Exception('Could not parse file at %s to a PLDEventData object.'%filepath)
             
     def aperture_photometry(self):
+        """Get sattelite flux data for this event.
+        
+        A getter method for space-based flux, flux error, fractional flux, and raw scatter on
+        the flux. Also calculates these values from the raw images if not already done.
+        
+        Returns:
+            flux: Array of flux data.
+            flux_err: Array of flux error data.
+            flux_frac: Array of fractional flux data.
+            flux_scatter: Float, estimate raw scatter in the flux data.
+        """
         if (self.flux_s is not None and 
                 self.flux_err_s is not None and 
                 self.flux_frac is not None and 

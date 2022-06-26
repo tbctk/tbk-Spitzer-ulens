@@ -4,7 +4,13 @@ Spitzer\_ulens package
 Submodules
 ----------
 
-.. _dataconfigmodule:
+Spitzer\_ulens.PLD module
+-------------------------
+
+.. automodule:: Spitzer_ulens.PLD
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Spitzer\_ulens.data\_config module
 ----------------------------------
@@ -14,22 +20,10 @@ Spitzer\_ulens.data\_config module
    :undoc-members:
    :show-inheritance:
 
-.. _modelsmodule:
-
 Spitzer\_ulens.models module
 ----------------------------
 
 .. automodule:: Spitzer_ulens.models
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. _PLDmodule:
-
-Spitzer\_ulens.PLD module
--------------------------
-
-.. automodule:: Spitzer_ulens.PLD
    :members:
    :undoc-members:
    :show-inheritance:
