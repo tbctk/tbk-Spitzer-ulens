@@ -7,12 +7,16 @@ SingleLensParallaxModel. The SingleLensModel and BinaryLensModel classes are exa
 simplest form of an LCModel. They are simply a function, defined by the 'func' method, wrapped by 
 the __call__ method, which allows the model to be created and called as follows:
 
+::
+
     my_1l_model = SingleLensModel()
     flux = my_1l_model(time,*pars)
 
 The SingleLensParallaxModel is an example of a more complex model that takes advantage of the 
 structure of the LCModel. A SingleLensParallaxModel must be initialized with its event coordinates 
 and a path to its satellite ephemeris file:
+
+::
 
     my_1lpar_model = SingleLensParallaxModel()
     flux_satellite,flux_ground = my_1lpar_model(time_satellite,time_ground,*pars)
@@ -25,12 +29,16 @@ One can create their own user-defined LCModel by defining a class to extend the 
 base class and then overwrite the 'func' method with their own desired function. For example, a 
 Gaussian model:
 
+::
+
     class GaussianModel(LCModel):
         def func(self,time,mean,std):
             return np.exp(-0.5*((time-mean)/std)**2)
 
 One can also overwrite the '__init__' method to add special properties of the model. For example, 
 suppose one wanted to create a single-lens model with one fixed parameter:
+
+::
 
     class SingleLensModel_FixedFb(LCModel):
         def __init__(self,fb):
@@ -168,23 +176,38 @@ class LCModel(ABC):
         return lp + self.lnlike(pars,time,flux,flux_err,flux_frac,flux_scatter)
     
 class SingleLensModel(LCModel):
+    """Simple 4-parameter single-lens model abstraction.
+    
+    """
     
     def func(self,time,tE,t0,fb,fs):
+        """See base class.
+        
+        """
         ts = (time-t0)/(tE/np.sqrt(12))
         flux = fb+fs/(np.sqrt(ts**2 +1))
         return flux
     
 class BinaryLensModel(LCModel):
+    """VBBinaryLensing-based 9-parameter binary-lens model abstraction.
+    
+    """
     
     VBBL = vbbl.VBBinaryLensing()
     VBBL.RelTol = 1e-03
     
     def func(self,time,tE,t0,fb,fs,s,q,rho,alpha,u0):
+        """See base class.
+        
+        """
         mag = self.get_mag(time,tE,t0,s,q,rho,alpha,u0)
         flux = self.mag2flux(mag,fb,fs)
         return flux
              
     def get_mag(self,time,tE,t0,s,q,rho,alpha,u0):
+        """Solves for the magnification only.
+        
+        """
         # Position of the center of the source with respect to the center of mass.
         tau = (time - t0)/tE
         # from Seb. Calchi Novati
@@ -199,7 +222,36 @@ class BinaryLensModel(LCModel):
         mag = self.VBBL.BinaryLightCurve(params, time, y1, y2)
         return np.array(mag)
     
+    def get_caustics(self,time,tE,t0,s,q,rho,alpha,u0):
+        """Get data for plotting caustics 
+        
+        """
+        tau = (time - t0)/tE
+        # from Seb. Calchi Novati
+        y1 = u0*np.sin(alpha) - tau*np.cos(alpha)
+        y2 = -u0*np.cos(alpha) - tau*np.sin(alpha)
+        def iterate_from(item):
+            while item is not None:
+                yield item
+                item = item.next
+        
+        solutions = self.VBBL.PlotCrit(s, q)
+
+        # generator function iterating over _sols, _curve, or _point objects 
+        # making use of the next keyword
+        curves = []
+        for curve in iterate_from(solutions.first):
+            for point in iterate_from(curve.first):
+                curves.append((point.x1, point.x2))
+
+        critical_curves = np.array(curves[:int(len(curves)/2)])
+        caustic_curves  = np.array(curves[int(len(curves)/2):])
+        return caustic_curves, critical_curves, np.transpose([y1.ravel(),y2.ravel()])
+    
 class SingleLensParallaxModel(LCModel):
+    """9-parameter single-lens model abstraction with ground parallax based on MuLensModel package.
+    
+    """
     
     def __init__(self,coords,ephemeris_file_path):
         self.satellite = mm.SatelliteSkyCoord(ephemeris_file_path)
@@ -211,7 +263,9 @@ class SingleLensParallaxModel(LCModel):
             raise Exception('Unrecognized coordinate format')
     
     def func(self,t_s,t_g,tE,t0,u0,pi_E_N,pi_E_E,fb_g,fs_g,fb_s,fs_s):
-
+        """See base class.
+        
+        """
         mag_s,mag_g = self.get_mag(t_s,t_g,tE,t0,u0,pi_E_N,pi_E_E)
         
         flux_g = self.mag2flux(mag_g,fb_g,fs_g)
@@ -220,6 +274,9 @@ class SingleLensParallaxModel(LCModel):
         return flux_s,flux_g
     
     def get_mag(self,t_s,t_g,tE,t0,u0,pi_E_N,pi_E_E):
+        """Get source magnification.
+        
+        """
         #time_g, time_s, tE, t0, u0, pi_E_N, pi_E_E, coord)):
         params        = {'t_0': t0, 'u_0': u0, 't_E': tE}
         params_pi_E   = {'pi_E_N': pi_E_N, 'pi_E_E': pi_E_E}
@@ -235,6 +292,9 @@ class SingleLensParallaxModel(LCModel):
         return mag_s,mag_g
     
     def lnprob(self,l_pars,bounds,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err):
+        """See base class.
+        
+        """
         pars = l_pars[:-2]
         l_s,l_g = l_pars[-2:]
         lp = self.lnprior(pars,bounds)
@@ -243,6 +303,9 @@ class SingleLensParallaxModel(LCModel):
         return lp + self.lnlike(pars,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err,l_s,l_g)
         
     def lnprior(self,pars,bounds):
+        """See base class.
+        
+        """
         if bounds is None:
             return 0
         else:
@@ -252,6 +315,9 @@ class SingleLensParallaxModel(LCModel):
                 return -np.inf
         
     def lnlike(self,pars,t_s,t_g,flux_s,flux_s_err,flux_frac,flux_scatter,flux_g,flux_g_err,l_s,l_g):
+        """See base class.
+        
+        """
         Y, Astro, Ps, A, X, flu_g  = PLD.analytic_solution(t_s,flux_s,flux_s_err,flux_frac,pars,self,t_g)
         # Generating time series from bestfit params
         FIT, SYS, CORR, RESI = PLD.get_bestfit(A, Ps, X, flux_s, Astro)
