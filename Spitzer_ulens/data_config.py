@@ -277,7 +277,7 @@ class PLDEventData(object):
                 pickle.dump(self,output,pickle.HIGHEST_PROTOCOL)
     
     @classmethod
-    def from_pickle(filepath):
+    def from_pickle(cls,filepath):
         """Loads a PLDEventData from a pickle file.
         
         Args:

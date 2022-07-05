@@ -129,10 +129,10 @@ class LCModel(ABC):
             not including priors.
         """
         # solving for PLD coefficients analytically
-        Y, Astro, Ps, A, C, E, X = PLD.analytic_solution(time,flux,flux_err,flux_frac,pars,self)
+        astro, pld_coeffs, A, C = PLD.analytic_solution(time,flux,flux_err,flux_frac,pars,self)
 
         # Generating time series from bestfit params
-        fit,sys,corr,resi = PLD.get_bestfit(A, Ps, X, flux, Astro)
+        fit,sys,corr,resi = PLD.get_bestfit(pld_coeffs, flux, flux_frac, astro, A)
         Ndat = len(flux[0])
 
         like = 0
@@ -140,7 +140,7 @@ class LCModel(ABC):
         for i in range(len(time)):
             # diff (don't forget ravel, otherwise you'll have some matrix operation!)
             diff  = flux[i]-fit[i].ravel()
-            diff2 = flux[i]-Astro[i].ravel()
+            diff2 = flux[i]-astro[i].ravel()
             # likelihood = -0.5*chisq
             inerr = 1/flux_err[i]
             inerr2 = 1/flux_scatter
@@ -318,14 +318,14 @@ class SingleLensParallaxModel(LCModel):
         """See base class.
         
         """
-        Y, Astro, Ps, A, X, flu_g  = PLD.analytic_solution(t_s,flux_s,flux_s_err,flux_frac,pars,self,t_g)
+        astro,pld_coeffs,A,C,flu_g  = PLD.analytic_solution(t_s,flux_s,flux_s_err,flux_frac,pars,self,t_g)
         # Generating time series from bestfit params
-        FIT, SYS, CORR, RESI = PLD.get_bestfit(A, Ps, X, flux_s, Astro)
+        fit,sys,corr,resi = PLD.get_bestfit(pld_coeffs, flux_s, flux_frac, astro, A)
         like = 0
         for i in range(len(t_s)):
             Ndat = len(flux_s[i])
-            diff  = flux_s[i]-FIT[i].ravel()
-            diff2 = flux_s[i]-Astro[i].ravel()
+            diff  = flux_s[i]-fit[i].ravel()
+            diff2 = flux_s[i]-astro[i].ravel()
             # error
             inerr  = 1/(l_s*flux_s_err[i])
             inerr2 = 1/(flux_scatter)

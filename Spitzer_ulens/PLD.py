@@ -33,21 +33,20 @@ def analytic_solution(time,flux,flux_err,flux_frac,pars,func,time_g=None):
     Ps = np.reshape(flux_frac,(n_dit,n_data,n_reg))
     A = astro[:,:,None]*Ps
     C = flux_err**2
-    X = np.empty((n_dit,n_reg))
-    E = np.empty((n_dit,n_reg,n_reg))
+    pld_coeffs = np.empty((n_dit,n_reg))
 
     for i in range(n_dit):
         Cinv = C[i]**-1
         tmp1 = np.linalg.pinv(A[i].T@np.diag(Cinv)@A[i])
         tmp2 = A[i].T@np.diag(Cinv)@Y[i]
-        E[i] = tmp1
-        X[i] = (tmp1@tmp2).ravel()
-    if time_g is not None:
-        return astro, Ps, A, X, flu_g
+        pld_coeffs[i] = (tmp1@tmp2).ravel()
+    
+    if time_g is None:
+        return astro, pld_coeffs, A, C
     else:
-        return astro, Ps, A, C, E, X
+        return astro, pld_coeffs, A, C, flu_g
 
-def get_bestfit(X, flux, flux_frac, astro, A=None):
+def get_bestfit(pld_coeffs, flux, flux_frac, astro, A=None):
     """
     Getting the best-fit value from analytical solutions.
     
@@ -71,8 +70,8 @@ def get_bestfit(X, flux, flux_frac, astro, A=None):
     if A is None:
         A = astro[:,:,None]*Ps
     
-    fit = (A@X[:,:,None])[:,:,0]   
-    sys = (Ps@X[:,:,None])[:,:,0]
+    fit = (A@pld_coeffs[:,:,None])[:,:,0]   
+    sys = (Ps@pld_coeffs[:,:,None])[:,:,0]
     corr = flux/sys
     resi = corr-astro
     return fit, sys, corr, resi
